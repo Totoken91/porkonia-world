@@ -94,3 +94,4 @@ Vérifier qu'un changement ne modifie pas l'image : lancer la même série de vu
 - Le ciel est un dôme finement découpé : le cube d'origine de three.js (douze triangles de 10 km) affichait de grands pans de couleur fausse à hauteur d'homme.
 - `tools/shot.mjs` : avec un tube (`| grep`), rien ne s'affiche avant la fin ; une capture en Haute ou en grand format prend plusieurs minutes. Pour itérer : Économe, 960 × 540, `pe.render(6)` au plus.
 - L'empreinte du décor (`npm run check`) ne couvre ni les forêts, ni les haies, ni les cultures : pour elles, comparer des captures.
+- Non élucidé : dans les captures sans carte graphique, un rectangle un peu plus clair et plus flou apparaît en bas de l'écran sur la route de campagne (un quart de la largeur, aligné sur l'écran, pas un élément d'interface). À vérifier sur un vrai écran avant d'y passer du temps.

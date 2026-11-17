@@ -1,0 +1,11 @@
+{
+  "name": "porkonia-world",
+  "version": "0.9.0",
+  "private": true,
+  "description": "Porkonia grandeur nature : simulation 3D du pays de Porkonia (three.js)",
+  "scripts": {
+    "build": "python3 tools/assemble.py",
+    "serve": "python3 -m http.server 8080 --directory dist"
+  },
+  "dependencies": { "three": "^0.160.0" }
+}

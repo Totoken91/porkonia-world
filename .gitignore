@@ -1,0 +1,7 @@
+node_modules/
+shots/
+__pycache__/
+data/hF.npy
+data/aoF.npy
+bake/cz
+bake/*.png

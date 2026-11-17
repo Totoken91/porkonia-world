@@ -1,5 +1,5 @@
 // Démarrage : construit le monde étape par étape puis lance la boucle
-import { setStatus, hashStr, $, fmtMoney } from '../engine/util.js';
+import { setStatus, hashStr, $, fmtMoney, fatal } from '../engine/util.js';
 import { QKEY } from '../engine/quality.js';
 import { STATIONS, STATION_BY_NAME } from '../world/land.js';
 import { scene, renderer, camera } from '../engine/renderer.js';
@@ -16,12 +16,12 @@ import { trainMaterials, train, buildLoco, buildCab, cam, placeTrainAt, rebuildC
 import { exInit, exStart } from './explore.js';
 import { buildScenery } from '../world/world.js';
 import { audio } from './audio.js';
-import { loadSave, applyLevel, renderLever, saveObj, arriveAt, ticker } from './railgame.js';
+import { loadSave, applyLevel, renderLever, arriveAt, ticker } from './railgame.js';
 import { buildMapBase } from './map.js';
 import { onTimeChanged, resize, _camPos, frame, registerFarCull } from './loop.js';
 import { installDebug } from './debug.js';
 
-async function boot(hotData) {
+async function boot() {
   try { await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('600 20px "Barlow Condensed"')]), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
   const T0 = performance.now(); const step = async (msg) => { console.log('boot', Math.round(performance.now() - T0), msg); setStatus(msg); await new Promise(r => setTimeout(r, 16)); };
   await step('Fabrication des textures…');
@@ -47,7 +47,7 @@ async function boot(hotData) {
   buildMapBase();
   for (const c of citizens.list) c.visible = false;
   if (citizens.meshes) for (const k in citizens.meshes) citizens.meshes[k].visible = false;
-  const had = loadSave(hotData);
+  const had = loadSave();
   applyLevel();
   onTimeChanged(TIMES[TKEY]);
   const startSt = STATIONS[game.lastStation] || STATION_BY_NAME['Douzi City'];
@@ -67,7 +67,6 @@ async function boot(hotData) {
   $('title-sub').textContent = had ? `Reprise du service à ${startSt.name} · ${fmtMoney(game.money)} Pork$ en caisse` : 'Exploration libre · 31 villes · à pied, en voiture';
   console.log('boot', Math.round(performance.now() - T0), 'fin'); console.log('Porkonia Express prêt', JSON.stringify(info));
   installDebug(info);
-  window.claude?.hot?.snapshot?.(() => saveObj());
   // mesure des performances sur l'appareil : module chargé seulement si l'adresse finit par ?mesure
   if (new URLSearchParams(location.search).has('mesure')) import('./mesure.js');
   requestAnimationFrame(frame);
@@ -86,5 +85,5 @@ async function boot(hotData) {
   };
 }
 try {
-  window.claude?.hot?.ready ? window.claude.hot.ready(boot) : await boot(window.claude?.hot?.data ?? {});
-} catch (e) { console.error(e); setStatus('Erreur au chargement : ' + e.message); }
+  await boot();
+} catch (e) { console.error(e); fatal('Erreur au chargement : ' + e.message + '.'); }

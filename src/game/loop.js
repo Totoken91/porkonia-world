@@ -1,9 +1,9 @@
 // Boucle d'image : mise à jour, résolution adaptative, masquage au loin, rendu
 import * as THREE from 'three';
-import { $, lerp } from '../engine/util.js';
+import { $, lerp, fatal } from '../engine/util.js';
 import { Q, QKEY } from '../engine/quality.js';
 import { hAt } from '../world/land.js';
-import { camera, gradePass, renderer, composer, bloomPass } from '../engine/renderer.js';
+import { canvas, camera, gradePass, renderer, composer, bloomPass } from '../engine/renderer.js';
 import { SUN_DIR, sky, updateSunShadow, WS, TIME_LISTENERS, TKEY } from '../engine/lighting.js';
 import { WATERS, renderReflection, reflectRT } from '../world/water.js';
 import { PROPS, ANIMATED } from '../world/registry.js';
@@ -74,9 +74,21 @@ export function registerFarCull() {
   for (const o of scenery.children.slice()) visit(o, 0);
   return n;
 }
+// Une image. Une erreur dans une mise à jour ne doit pas figer le jeu : l'image suivante est toujours demandée,
+// l'erreur est consignée, et si elle se répète une seconde entière le joueur est prévenu au lieu de regarder un écran gelé.
+let frameErrors = 0;
 export function frame(now) {
-  if (PAUSE.on && PAUSE.once <= 0) { requestAnimationFrame(frame); return; }
+  if (frameErrors >= 60) return;
+  requestAnimationFrame(frame);
+  if (PAUSE.on && PAUSE.once <= 0) return;
   if (PAUSE.on) { PAUSE.once--; if (PAUSE.once === 0 && PAUSE.cb) { const cb = PAUSE.cb; PAUSE.cb = null; setTimeout(cb, 0); } }
+  try { step(now); frameErrors = 0; }
+  catch (e) {
+    if (frameErrors++ < 3) console.error(e);
+    if (frameErrors >= 60) fatal('Erreur d\'affichage : ' + e.message + '.');
+  }
+}
+function step(now) {
   const rdt = Math.min(0.05, (now - clockPrev) / 1000); clockPrev = now;
   clock.simT += rdt;
   if (EX.on) { if (game.started) exUpdate(rdt); }
@@ -125,8 +137,9 @@ export function frame(now) {
   renderReflection();
   composer.render(rdt);
   adaptResolution(rdt);
-  requestAnimationFrame(frame);
 }
+// le navigateur peut retirer la carte graphique à la page (mémoire saturée, onglet en arrière-plan sur téléphone)
+canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); fatal('La carte graphique a décroché, souvent par manque de mémoire. Essayez le réglage Économe.'); });
 function setRenderSize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setPixelRatio(pixelRatio); renderer.setSize(w, h, false);

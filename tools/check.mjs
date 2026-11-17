@@ -22,7 +22,7 @@ for (const q of ['mobile', 'haute', 'ultra']) {
   await ctx.addInitScript(`try{localStorage.setItem('porkonia-q3','${q}')}catch(e){}`);
   const pg = await ctx.newPage(); pg.setDefaultTimeout(600000);
   pg.on('pageerror', e => errors.push(`[${q}] ${e.message}`));
-  pg.on('console', m => { if (m.type() === 'error') errors.push(`[${q}] console : ${m.text().slice(0, 300)}`); });
+  pg.on('console', m => { if (m.type() === 'error' && !m.text().includes('panne injectée')) errors.push(`[${q}] console : ${m.text().slice(0, 300)}`); });
   await blockNetwork(pg);
   await pg.goto(srv.url + '?pause');
   await pg.waitForFunction("!!(window.__pe && window.__pe.render) || /Erreur/.test(document.getElementById('loading-status')?.textContent || '')", null, { polling: 500 });
@@ -37,6 +37,11 @@ for (const q of ['mobile', 'haute', 'ultra']) {
       const st = pe.STATION_BY_NAME['Nouvelle Groin']; const r = pe.ROADS[0].pts[pe.ROADS[0].pts.length >> 1];
       for (const [x, z] of [[st.town.C[0], st.town.C[1]], [r[0], r[2]], [st.town.C[0], st.town.C[1]]]) { pe.go(x, z, 0, 0); await pe.render(3); let n = 0; pe.scene.traverseVisible(o => { if (o.isInstancedMesh) n++; }); out.push(n); }
       return out; })()`);
+    // panne injectée : deux images qui plantent ne doivent ni figer la boucle ni afficher l'écran d'erreur
+    const survit = await pg.evaluate(`(async () => { const pe = window.__pe, o = pe.composer.render.bind(pe.composer); let k = 0;
+      pe.composer.render = dt => { if (k++ < 2) throw new Error('panne injectée'); o(dt); }; await pe.render(5); pe.composer.render = o;
+      return k >= 5 && !document.getElementById('loading').dataset.fatal; })()`);
+    if (!survit) errors.push('[mobile] la boucle d\'image ne survit pas à une erreur passagère');
     if (!(vus[0] > 0 && vus[2] === vus[0])) errors.push(`[mobile] tuiles à la demande incohérentes après un aller-retour : ${vus}`);
   }
   await ctx.close();

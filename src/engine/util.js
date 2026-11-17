@@ -14,4 +14,10 @@ export async function gunzip(s) {
 }
 export const fmtMoney = n => Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ');
 export const setStatus = t => { const el = $('loading-status'); if (el) el.textContent = t; };
+// erreur dont le jeu ne se relève pas : écran de chargement réaffiché avec le message, un appui recharge la page
+export function fatal(message) {
+  const el = $('loading'); if (!el || el.dataset.fatal) return;
+  el.dataset.fatal = '1'; el.classList.remove('done'); el.style.cursor = 'pointer'; el.onclick = () => location.reload();
+  setStatus(message + ' Touchez l\'écran pour recharger.');
+}
 export const tick = () => new Promise(r => setTimeout(r, 0));

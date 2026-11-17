@@ -127,9 +127,9 @@ export function applyLevel() { const L = LEVELS[game.lvl]; train.vmax = L.vmax /
 // ---------- sauvegarde
 export function saveObj() { return { money: game.money, cap: game.cap, lvl: game.lvl, horn: game.horn, slots: game.slots, lastStation: game.lastStation, stats: game.stats, sound: game.sound, voice: game.voice, now: game.now }; }
 export function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(saveObj())); } catch (e) { } }
-export function loadSave(hotData) {
-  let d = hotData && hotData.money !== undefined ? hotData : null;
-  if (!d) try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
+export function loadSave() {
+  let d = null;
+  try { d = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch (e) { d = null; }
   if (!d) return false;
   Object.assign(game, { money: d.money ?? 1500, cap: d.cap ?? 3, lvl: d.lvl ?? 0, horn: d.horn || 'classique', lastStation: d.lastStation ?? 0, stats: d.stats || game.stats, sound: d.sound ?? true, voice: !!d.voice, now: d.now || 0 });
   game.slots = Array.from({ length: game.cap }, (_, i) => (d.slots && d.slots[i]) || null);

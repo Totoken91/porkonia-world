@@ -19,6 +19,8 @@ import { audio } from './audio.js';
 import { save, physicsStep, checkStops, ticker, ANNOUNCES } from './railgame.js';
 import { drawMap } from './map.js';
 import { updateHud } from './hud.js';
+import { updateHedges } from '../world/hedges.js';
+import { LAZY } from '../engine/lazy.js';
 
 let pixelRatio = Math.min(window.devicePixelRatio || 1, Q.pr);
 export function resize() {
@@ -119,8 +121,10 @@ function step(now) {
     puff(p.x, p.y, p.z, (Math.random() - 0.5) * 0.6, 2.2 + train.notch * 0.5, (Math.random() - 0.5) * 0.6, 0.45 + train.notch * 0.08, 2.6);
   }
   updateSmoke(rdt, _camPos);
+  LAZY.deadline = PAUSE.on ? Infinity : performance.now() + 7;   // au plus 7 ms de fabrication de tuiles par image (illimité en mode test)
   // tuiles à la demande : en dernier avant le rendu, après tout ce qui tire au hasard dans l'image
   updateVegetation(_camPos);
+  updateHedges(_camPos);
   updateTownLOD(_camPos);
   for (const a of ANIMATED) { if (a.kind === 'spin') a.obj.rotation.y += rdt * 0.25; if (a.kind === 'mill') a.obj.rotation.z += rdt * 0.6; }
   // ombres : centrées un peu devant la caméra

@@ -13,6 +13,7 @@ import { buildCitizens, buildHerds } from './creatures.js';
 import { buildVegetation, buildHay } from './vegetation.js';
 import { buildGoblins, buildSmoke, buildBirds } from './ambiance.js';
 import { buildRoads } from './roads.js';
+import { buildHedges } from './hedges.js';
 
 export async function buildScenery() {
   sceneryMaterials();
@@ -30,6 +31,7 @@ export async function buildScenery() {
   buildCitizens();
   buildHerds(rngPhase('troupeaux'));
   const nTrees = buildVegetation(rngPhase('forets'));
+  buildHedges();
   buildHay(rngPhase('foin'));
   buildGoblins();
   setStatus("Pousse de l'herbe…"); await tick();

@@ -12,12 +12,13 @@ Lire `VISION.md` avant toute passe visuelle : la vision de Kenny dans ses mots, 
 - Les trains restent dans le monde mais leur gameplay est mis de côté : priorité à la balade.
 - Avant de livrer : regarder des images fixes et faire une passe d'autocritique.
 
-## État (v9 migrée, 17 nov. 2026)
-- 31 villes placées d'après l'atlas, tailles selon la population, quadrillage de rues, îlots (centre, faubourg, pavillons, place, parc, zone d'activité), 40 routes entre villes, voies ferrées avec un train autonome.
-- Environ 44 000 accessoires, 2 700 voitures garées, 46 000 arbres, habitants et circulation autour du joueur.
+## État (v10, 17 nov. 2026)
+La feuille de route est dans `ROADMAP.md` : la tenir à jour à chaque passe.
+- 31 villes placées d'après l'atlas, quadrillage de rues, îlots, 40 routes entre villes, voies ferrées avec un train autonome.
+- Bocage partout en plaine (champs irréguliers, haies), environ 44 000 accessoires, 2 700 voitures garées, 46 000 arbres, habitants et circulation autour du joueur.
+- Conduite refaite : quatre voitures, dérapage, collisions, mobilier et cochons projetés, sons. Réglée par simulation, jamais essayée en main : attendre le retour de Kenny avant de retoucher les sensations.
 - Trois réglages : Ultra, Haute, Économe (défaut sur tactile). Résolution adaptative.
-- Projet sous Vite, modules ES, décor fabriqué à la demande (voir « Architecture »). Vercel fait le build ; `dist/` n'est plus dans le dépôt.
-- Étapes 1 (mesure), 2 (migration sans changement visuel) et consolidation du moteur terminées. Étape suivante : la liste ci-dessous, en commençant par les bâtiments.
+- Projet sous Vite, modules ES, décor fabriqué à la demande. Vercel fait le build ; `dist/` n'est plus dans le dépôt.
 
 ## Ce que Kenny trouve encore moche ou manquant
 1. Les bâtiments sont des boîtes à toit simple : il faut des volumes cartoon.
@@ -30,23 +31,26 @@ Lire `VISION.md` avant toute passe visuelle : la vision de Kenny dans ses mots, 
 ## Architecture
 `src/` : modules ES sans dépendance circulaire, en trois dossiers. Un module n'importe que plus bas que lui ; si un module bas a besoin d'un module haut, passer par un écouteur (`TIME_LISTENERS`, `mapState.draw`), jamais par un import à l'envers.
 - `engine/` (moteur, ne connaît pas le contenu de Porkonia) : `util`, `quality`, `renderer`, `textures`, `lighting`, `lazy` (maillages à la demande), `geo`.
-- `world/` (le décor) : `land` (relief, gares), `terrain`, `water`, `seeds`, `registry`, `tracks`, `cities` (table des 31 villes), `scenery`, `assets`, `props`, `towns`, `landmarks`, `creatures`, `vegetation`, `ambiance`, `roads`, `world` (assemble le tout), `signature`.
-- `game/` (le jeu) : `state`, `train`, `ui`, `npc`, `explore` (la balade), `audio`, `map`, `hud`, `loop`, `debug` (`window.__pe`), `boot`, `mesure`, et `railgame` : le jeu de conduite de train, en sommeil (il ne tourne que si `EX.on` est faux). Ne pas le supprimer sans l'accord de Kenny.
+- `world/` (le décor) : `land` (relief, gares), `parcels` (parcellaire du bocage), `terrain`, `water`, `seeds`, `registry`, `tracks`, `cities` (table des 31 villes), `scenery`, `assets`, `cars` (modèles de voitures), `props`, `towns`, `landmarks`, `creatures`, `vegetation`, `hedges`, `ambiance`, `roads`, `world` (assemble le tout), `signature`.
+- `game/` (le jeu) : `state`, `train`, `ui`, `npc`, `flyers` (corps projetés), `sfx` (sons de la balade), `drive` (conduite), `explore` (la balade), `audio`, `map`, `hud`, `loop`, `debug` (`window.__pe`), `boot`, `mesure`, et `railgame` : le jeu de conduite de train, en sommeil (il ne tourne que si `EX.on` est faux). Ne pas le supprimer sans l'accord de Kenny.
 
 Règles du moteur :
 - Hasard (`world/seeds.js`) : chaque ville et chaque phase du décor a son générateur. Modifier une ville ne déplace plus les autres. Les graines actuelles reproduisent le décor de la v9 : ne pas les recalculer. Dans une ville, ajouter un tirage décale encore la suite de cette ville.
 - Décor à la demande (`engine/lazy.js`, `lazyShow`) : accessoires, voitures garées, éléments de façade et arbres ne gardent que la liste de leurs instances par tuile. Le maillage est fabriqué à la première apparition et libéré au loin. Les éléments de façade sont recalculés par tuile depuis les bâtiments.
-- Encore construit au démarrage : le plan des 31 villes, murs et toits (un seul maillage pour tout le pays), sols des villes, gares, monuments, train, textures.
+- Bocage : `world/parcels.js` calcule un pavage de champs qui se répète tous les 2 048 m. Le shader du terrain le lit pour les cultures et les limites ; `world/hedges.js` le lit pour planter les haies exactement sur ces limites. Changer l'un sans l'autre décale les haies.
+- Conduite (`game/drive.js`) : la vitesse est un vecteur du monde distinct du cap ; l'adhérence rogne la glisse. Ce que la voiture percute est rangé dans `world/registry.js` (`treeAdd`, `knockAdd`) et dans la grille de `world/roads.js` (`collide`). Un objet renversé marque son instance (`p[6]`) et libère sa tuile (`lazyDrop`), qui se refait sans lui.
+- Fabrication des tuiles : au plus 7 ms par image en jeu (`LAZY.deadline`), sans limite en mode `?pause`.
+- Encore construit au démarrage : le plan des 31 villes, murs et toits (par bloc de 1 024 m), sols des villes, gares, monuments, train, textures.
 - Une erreur dans une image ne fige pas le jeu (`game/loop.js`) ; une erreur durable ou la perte de la carte graphique affiche un message (`fatal`).
 
 Avant de pousser : `npm test` (lint, build, puis contrôle sans écran : démarrage dans les trois réglages, aucune erreur, empreinte du décor, aller-retour ville-route, panne injectée). Si le décor change exprès : `npm run check -- --update`, et le dire dans le commit. La CI GitHub lance lint et build.
 
-À faire dès que les bâtiments s'alourdissent (étape suivante) : découper murs et toits par ville ou par tuile, comme les façades. Aujourd'hui ce sont des boîtes de 12 triangles et un seul maillage suffit ; avec des volumes cartoon, non.
-
 ## Mesures (17 nov. 2026, Chrome sans carte graphique, 1280 × 720)
 Les images par seconde n'ont toujours pas été mesurées sur une vraie carte graphique : ce conteneur n'en a pas (rendu logiciel, moins de 2 images par seconde, sans valeur). Kenny doit ouvrir le jeu avec `?mesure` sur son téléphone et envoyer le tableau.
 
-Par image, identique avant et après migration (l'image n'a pas changé) :
+Depuis la v10 (voitures légères, façades allégées au loin, murs par bloc), passe principale en Économe : Douzi City 4,6 M de triangles et 812 appels, route de campagne 0,9 M et 421 appels. Les tableaux ci-dessous datent de la v9, avant ces changements ; ils servent de point de comparaison.
+
+Par image en v9, identique avant et après migration :
 
 | | Douzi City | Nouvelle Groin | Route de campagne |
 |---|---|---|---|
@@ -87,3 +91,6 @@ Vérifier qu'un changement ne modifie pas l'image : lancer la même série de vu
 - Un maillage à la demande doit recevoir son rang de dessin à l'inscription (`lazyRankStart`, `lazyRank`) : à matériau et profondeur égaux, three.js dessine dans l'ordre de création.
 - `registerFarCull` (dans `game/loop.js`) ignore les objets invisibles au moment où il s'exécute : ne rien masquer avant lui pendant le démarrage, sinon la distance d'affichage de ces objets change.
 - three.js tire au hasard l'identifiant de chaque objet créé : dans une capture figée, créer plus ou moins d'objets décale le hasard des habitants. `tools/shot.mjs` remet la graine à chaque image pour cette raison.
+- Le ciel est un dôme finement découpé : le cube d'origine de three.js (douze triangles de 10 km) affichait de grands pans de couleur fausse à hauteur d'homme.
+- `tools/shot.mjs` : avec un tube (`| grep`), rien ne s'affiche avant la fin ; une capture en Haute ou en grand format prend plusieurs minutes. Pour itérer : Économe, 960 × 540, `pe.render(6)` au plus.
+- L'empreinte du décor (`npm run check`) ne couvre ni les forêts, ni les haies, ni les cultures : pour elles, comparer des captures.

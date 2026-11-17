@@ -119,11 +119,11 @@ export function buildRoads() {
       const V = (x, y, z, kind) => D.v(x, y, z, up[0], up[1], up[2], kind, x, z);
       const quad = (a, b, c, d, kind) => { V(...a, kind); V(...b, kind); V(...c, kind); V(...a, kind); V(...c, kind); V(...d, kind); };
       const P = (r, o, dy) => [r.x + r.nx * o, (o >= 0 ? lerp(r.y, r.yl, o / HW) : lerp(r.y, r.yr, -o / HW)) + dy, r.z + r.nz * o];
-      quad(P(A0, HW, 0), P(B0, HW, 0), P(B0, 0, 0), P(A0, 0, 0), 0);
-      quad(P(A0, 0, 0), P(B0, 0, 0), P(B0, -HW, 0), P(A0, -HW, 0), 0);
-      if (k % 3 < 2) quad(P(A0, 0.08, 0.03), P(B0, 0.08, 0.03), P(B0, -0.08, 0.03), P(A0, -0.08, 0.03), 5);
+      quad(P(A0, HW, 0), P(B0, HW, 0), P(B0, 0, 0), P(A0, 0, 0), 9);
+      quad(P(A0, 0, 0), P(B0, 0, 0), P(B0, -HW, 0), P(A0, -HW, 0), 9);
+      if (k % 4 < 2) quad(P(A0, 0.06, 0.03), P(B0, 0.06, 0.03), P(B0, -0.06, 0.03), P(A0, -0.06, 0.03), 11);
       for (const sg of [-1, 1]) {
-        quad(P(A0, sg * (HW - 0.25), 0.03), P(B0, sg * (HW - 0.25), 0.03), P(B0, sg * (HW - 0.4), 0.03), P(A0, sg * (HW - 0.4), 0.03), 5);
+        quad(P(A0, sg * HW, 0.03), P(B0, sg * HW, 0.03), P(B0, sg * (HW - 0.85), 0.03), P(A0, sg * (HW - 0.85), 0.03), 10);   // accotement
         // talus quand la route est au-dessus du terrain
         const ya = sg > 0 ? A0.yl : A0.yr, yb = sg > 0 ? B0.yl : B0.yr, ga = sg > 0 ? A0.gl : A0.gr, gb = sg > 0 ? B0.gl : B0.gr;
         if (ya - ga > 0.3 || yb - gb > 0.3) {

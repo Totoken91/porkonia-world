@@ -3,8 +3,9 @@ import * as THREE from 'three';
 import { clamp } from '../engine/util.js';
 import { NX, NZ, CLS, LAKE, H, CELL, AOV, WW, HH, tmGet, hAt } from './land.js';
 import { freeAfterUpload } from '../engine/renderer.js';
-import { TEX, NOISE, noiseAt } from '../engine/textures.js';
+import { TEX, NOISE } from '../engine/textures.js';
 import { worldShading } from '../engine/lighting.js';
+import { PARCEL_TEX } from './parcels.js';
 
 // ---------- terrain (LOD par tuiles, mélange de textures, AO, normales de détail)
 let TERRAIN_MAT = null;
@@ -15,10 +16,11 @@ function terrainMaterial() {
       Object.assign(sh.uniforms, {
         tGrass: { value: TEX.grass }, tDry: { value: TEX.dry }, tForest: { value: TEX.forest }, tRock: { value: TEX.rock }, tSnow: { value: TEX.snow },
         tSand: { value: TEX.sand }, tGravel: { value: TEX.gravel }, tDetN: { value: TEX.detailN }, tNoiseT: { value: NOISE }, tGrassN: { value: TEX.grassN },
+        tParcelId: { value: PARCEL_TEX.id }, tParcelEdge: { value: PARCEL_TEX.edge },
       });
       sh.vertexShader = 'attribute vec4 aSplat; attribute vec4 aMisc; attribute float aAO; varying vec4 vSplat; varying vec4 vMisc; varying float vAO; varying vec3 vWN;\n' + sh.vertexShader
         .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n vSplat = aSplat; vMisc = aMisc; vAO = aAO; vWN = normalize(mat3(modelMatrix) * objectNormal);');
-      sh.fragmentShader = `uniform sampler2D tGrass, tDry, tForest, tRock, tSnow, tSand, tGravel, tDetN, tNoiseT, tGrassN;
+      sh.fragmentShader = `uniform sampler2D tGrass, tDry, tForest, tRock, tSnow, tSand, tGravel, tDetN, tNoiseT, tGrassN, tParcelId, tParcelEdge;
         varying vec4 vSplat; varying vec4 vMisc; varying float vAO; varying vec3 vWN;
         float h21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
         float snowW_g; float rockW_g;\n` + sh.fragmentShader
@@ -50,18 +52,32 @@ function terrainMaterial() {
           vec3 col = grass;
           col = mix(col, dry, clamp(vSplat.y * 1.2 + (macro - 0.5) * 0.4, 0.0, 1.0));
           col = mix(col, forest, clamp(vSplat.x * 1.1, 0.0, 1.0));
-          // parcelles agricoles
+          // bocage : chaque champ du parcellaire a sa culture ; chemins de terre et pieds de haie sur les limites
           if (vMisc.x > 0.01) {
-            float a = vMisc.y * 3.14159;
-            vec2 q = mat2(cos(a), -sin(a), sin(a), cos(a)) * vWP.xz;
-            vec2 sz = vec2(165.0, 105.0);
-            vec2 cell = floor(q / sz); vec2 f = fract(q / sz);
-            float hh = h21(cell + floor(vMisc.y * 50.0));
-            vec3 fc = hh < 0.2 ? vec3(0.62, 0.52, 0.2) : hh < 0.38 ? vec3(0.42, 0.55, 0.16) : hh < 0.52 ? vec3(0.38, 0.27, 0.16) : hh < 0.62 ? vec3(0.7, 0.62, 0.12) : hh < 0.75 ? vec3(0.26, 0.42, 0.13) : vec3(0.0);
-            float rows = 0.86 + 0.14 * sin((hh > 0.5 ? q.x : q.y) * 2.4);
-            float edge = min(min(f.x, 1.0 - f.x) * sz.x, min(f.y, 1.0 - f.y) * sz.y);
-            if (hh < 0.75) col = mix(col, fc * rows * (0.85 + 0.3 * texture2D(tGrass, uvA * 0.5).g), vMisc.x * smoothstep(1.2, 3.5, edge));
-            col = mix(col, vec3(0.12, 0.2, 0.07), vMisc.x * (1.0 - smoothstep(0.6, 2.2, edge)) * step(0.3, h21(cell * 1.7)));
+            vec2 pu = vWP.xz / 2048.0;
+            vec4 pid = texture2D(tParcelId, pu); vec4 ped = texture2D(tParcelEdge, pu);
+            float hh = pid.r, edge = ped.r * 31.875, hedge = step(0.5, ped.g), fd2 = length(cameraPosition - vWP);
+            vec3 gr2 = texture2D(tGrass, uvA * 0.5).rgb;
+            vec3 fc; float sillons = 0.0;
+            if (hh < 0.18) { fc = vec3(0.78, 0.56, 0.17); sillons = 0.22; }                   // blé mûr
+            else if (hh < 0.27) { fc = vec3(0.88, 0.74, 0.07); sillons = 0.12; }              // colza
+            else if (hh < 0.5) fc = grass * vec3(1.75, 1.5, 1.0) + vec3(0.03, 0.04, 0.0);      // prairie claire
+            else if (hh < 0.66) fc = grass * vec3(1.35, 1.3, 1.0);                             // pâture
+            else if (hh < 0.78) { fc = vec3(0.36, 0.56, 0.16); sillons = 0.2; }                // luzerne
+            else if (hh < 0.9) { fc = vec3(0.4, 0.26, 0.16); sillons = 0.34; }                 // labour
+            else if (hh < 0.94) { fc = vec3(0.5, 0.4, 0.76); sillons = 0.34; }                 // lavande
+            else { fc = vec3(0.7, 0.58, 0.32); sillons = 0.26; }                               // chaume
+            if (sillons > 0.0) {
+              float a = pid.g * 3.14159; vec2 dir = vec2(cos(a), sin(a));
+              float rows = sin(dot(vWP.xz, dir) * 1.9);
+              fc *= 1.0 - sillons * (0.5 + 0.5 * rows) * smoothstep(260.0, 60.0, fd2);
+              fc *= 0.72 + 0.62 * gr2.g;
+            }
+            fc *= 0.92 + 0.16 * macro2;
+            col = mix(col, fc, vMisc.x);
+            float lim = 1.0 - smoothstep(0.9, 2.4, edge);
+            col = mix(col, vec3(0.6, 0.5, 0.34) * (0.85 + 0.3 * gr2.r), vMisc.x * lim * (1.0 - hedge) * 0.85);
+            col = mix(col, vec3(0.1, 0.19, 0.07), vMisc.x * (1.0 - smoothstep(1.4, 3.4, edge)) * hedge);
           }
           col = mix(col, sand, clamp(vSplat.w, 0.0, 1.0));
           float rockW = smoothstep(0.34, 0.56, slope + (macro2 - 0.5) * 0.16) * (1.0 - vSplat.w);
@@ -108,20 +124,15 @@ export function buildTerrain(fieldCenters) {
     splat[k * 4] = forestM[k] * 255; splat[k * 4 + 1] = hillM[k] * 255; splat[k * 4 + 2] = snowM[k] * 255; splat[k * 4 + 3] = sand * 255;
     ao[k] = AOV[k] / 255;
     const x = (i / (NX - 1) - 0.5) * WW, z = (j / (NZ - 1) - 0.5) * HH;
-    let fm = 0, fa = 0;
-    if (CLS[k] === 1 && ny / l > 0.94 && !sand) for (const f of fieldCenters) {
-      const dx = x - f.x, dz = z - f.z, d2 = dx * dx + dz * dz;
-      if (d2 < f.r2 && d2 > f.inner2 * 0.6) { fm = clamp((Math.sqrt(f.r2) - Math.sqrt(d2)) / 300, 0, 1) * clamp((Math.sqrt(d2) - Math.sqrt(f.inner2) * 0.75) / 120, 0, 1); fa = f.angle; break; }
-    }
-    if (fm === 0 && CLS[k] === 1 && ny / l > 0.95 && !sand) {
-      const nf = noiseAt(x * 0.0007 + 31.7, z * 0.0007 + 12.3, 7);
-      if (nf > 0.5) { fm = clamp((nf - 0.5) / 0.05, 0, 1) * 0.9; const hx = Math.floor(x / 700), hz = Math.floor(z / 700); fa = (Math.abs(Math.sin(hx * 127.1 + hz * 311.7) * 43758.5453) % 1) * Math.PI; }
-    }
+    // bocage : toute la plaine cultivable porte des champs (le parcellaire vient de world/parcels.js)
+    let fm = CLS[k] === 1 && ny / l > 0.93 && !sand ? 1 : 0;
+    // pas de champs dans l'emprise des villes : ils s'effacent à l'approche des faubourgs
+    if (fm) for (const f of fieldCenters) { const dx = x - f.x, dz = z - f.z, d2 = dx * dx + dz * dz; if (d2 < f.inner2 * 1.9) fm = Math.min(fm, clamp((Math.sqrt(d2) - Math.sqrt(f.inner2)) / 110, 0, 1)); }
     const tm = tmGet(x, z);
     const grav = (tm === 1 || tm === 2) && ny / l < 0.93 ? 1 : 0;
     let urb = 0;
     for (const f of fieldCenters) { const d = Math.hypot(x - f.cx, z - f.cz); if (d < f.urb) { urb = Math.max(urb, clamp((f.urb - d) / (f.urb * 0.35), 0, 1)); } }
-    misc[k * 4] = fm * 255 * (1 - urb); misc[k * 4 + 1] = fa / Math.PI * 255; misc[k * 4 + 2] = grav * 200; misc[k * 4 + 3] = urb * 255;
+    misc[k * 4] = fm * 255 * (1 - urb); misc[k * 4 + 1] = 0; misc[k * 4 + 2] = grav * 200; misc[k * 4 + 3] = urb * 255;
   }
   TERRAIN_MAT = terrainMaterial();
   const CH = 64;

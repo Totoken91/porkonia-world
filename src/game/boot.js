@@ -20,6 +20,7 @@ import { loadSave, applyLevel, renderLever, arriveAt, ticker } from './railgame.
 import { buildMapBase } from './map.js';
 import { onTimeChanged, resize, _camPos, frame, registerFarCull } from './loop.js';
 import { installDebug } from './debug.js';
+import { updateHedges } from '../world/hedges.js';
 
 async function boot() {
   try { await Promise.race([Promise.all([document.fonts.load('40px Bungee'), document.fonts.load('600 20px "Barlow Condensed"')]), new Promise(r => setTimeout(r, 2500))]); } catch (e) { }
@@ -61,7 +62,7 @@ async function boot() {
   resize();
   await step('Premier rendu…');
   // les tuiles à la demande voisines du départ sont fabriquées ici : leurs matériaux se compilent pendant le chargement
-  _camPos.set(startSt.x, 0, startSt.z); updateVegetation(_camPos); prewarmTownTiles(_camPos);
+  _camPos.set(startSt.x, 0, startSt.z); updateVegetation(_camPos); updateHedges(_camPos); prewarmTownTiles(_camPos);
   renderer.compile(scene, camera);
   $('loading').classList.add('done');
   $('title-sub').textContent = had ? `Reprise du service à ${startSt.name} · ${fmtMoney(game.money)} Pork$ en caisse` : 'Exploration libre · 31 villes · à pied, en voiture';

@@ -182,6 +182,11 @@ export function groundMaterial() {
           else if (k == 7) { vec2 q = vLoc2 / vec2(0.9, 0.6); q.x += floor(q.y) * 0.5; vec2 f = fract(q); vec2 id = floor(q);
             float j = smoothstep(0.0, 0.03, f.x) * smoothstep(1.0, 0.97, f.x) * smoothstep(0.0, 0.05, f.y) * smoothstep(1.0, 0.95, f.y);
             c = vec3(0.66, 0.62, 0.56) * (0.88 + 0.14 * hU(id)) * mix(0.7, 1.0, j) * (0.9 + mac * 0.2); gRough = 0.82; }
+          else if (k == 9) { c = texture2D(tAsph, vWP.xz * 0.1).rgb * vec3(2.9, 2.75, 2.5) * (0.82 + mac * 0.3);   // route de campagne : enrobé clair et tiède
+            gRough = 0.85; }
+          else if (k == 10) { vec3 gv = texture2D(tGv, vWP.xz * 0.3).rgb * vec3(1.25, 1.14, 0.92), g1 = texture2D(tGr, vWP.xz * 0.11).rgb * vec3(1.05, 1.1, 0.85);   // accotement sablé gagné par l'herbe
+            c = mix(gv, g1, smoothstep(0.35, 0.7, texture2D(tNzU, vWP.xz * 0.09).g + (mac - 0.5) * 0.4)); gRough = 0.95; }
+          else if (k == 11) { c = vec3(0.92, 0.86, 0.66); gRough = 0.75; }   // ligne centrale crème
           diffuseColor.rgb = c; }`)
         .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = gRough;');
     },

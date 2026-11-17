@@ -6,7 +6,7 @@ import { tmGet, waterAt, slopeAt, hAt, tmMark, WW, HH, clsAt, STATIONS } from '.
 import { freeAfterUpload } from '../engine/renderer.js';
 import { noiseAt, TEX } from '../engine/textures.js';
 import { worldShading } from '../engine/lighting.js';
-import { lazyRankStart, lazyRank, lazyShow, lazyFar } from '../engine/lazy.js';
+import { lazyRankStart, lazyRank, lazyShow, lazyFar, lazyDrop } from '../engine/lazy.js';
 import { linCol, M, TPL } from '../engine/geo.js';
 import { TOWN_SEGS, propAdd } from './registry.js';
 import { BUILDINGS, newDrape, drapeRect, drapeWall, LAMPS, TOWN_TREES, STREETS, WALLS, ROOFS, FOUNTAINS, TOWERS, HEDGES, CHALET, GWALLS, siteOk, reserve, FARMS, scenery, DRAPE, Kit, groundMaterial, DRAPES, facadePoint } from './scenery.js';
@@ -541,7 +541,8 @@ function partsMaterial() {
 }
 // --- géométries unitaires (façade dans le plan z = 0, extérieur vers +z)
 class PartGeo {
-  constructor() { this.p = []; this.n = []; this.c = []; this.uv = []; this.pt = []; }
+  // lite : version allégée pour les façades lointaines, où une boîte se réduit à sa face avant
+  constructor(lite = false) { this.p = []; this.n = []; this.c = []; this.uv = []; this.pt = []; this.lite = lite; }
   quad(a, b, c, d, n, col, part, uv = [[0, 0], [1, 0], [1, 1], [0, 1]]) {
     const lc = linCol(col);
     for (const [q, t] of [[a, uv[0]], [b, uv[1]], [c, uv[2]], [a, uv[0]], [c, uv[2]], [d, uv[3]]]) { this.p.push(...q); this.n.push(...n); this.c.push(...lc); this.uv.push(...t); this.pt.push(part); }
@@ -551,6 +552,7 @@ class PartGeo {
     const x0 = cx - hx, x1 = cx + hx, y0 = cy - hy, y1 = cy + hy, z0 = cz - hz, z1 = cz + hz;
     const U = [[0, 0], [uvScale, 0], [uvScale, 1], [0, 1]];
     this.quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], col, part, U);
+    if (this.lite) return this;
     this.quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], col, part);
     this.quad([x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1], [0, -1, 0], col, part);
     this.quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], col, part);
@@ -569,12 +571,12 @@ class PartGeo {
     return g;
   }
 }
-function makeParts() {
+function makeParts(lite = false) {
   const STONE = [232, 226, 212], WHITE = [240, 238, 232], DARK = [40, 40, 44];
   const P = {};
   // fenêtre 1,1 × 1,5 : encadrement en saillie, vitre en retrait, croisillon, appui, linteau
   {
-    const g = new PartGeo(), w = 0.55, h = 0.75, f = 0.13, dz = 0.07;
+    const g = new PartGeo(lite), w = 0.55, h = 0.75, f = 0.13, dz = 0.07;
     g.box(0, h + f / 2, dz / 2, w + f, f / 2, dz / 2, STONE, 0).box(0, -h - f / 2, dz / 2, w + f, f / 2, dz / 2, STONE, 0);
     g.box(-w - f / 2, 0, dz / 2, f / 2, h, dz / 2, STONE, 0).box(w + f / 2, 0, dz / 2, f / 2, h, dz / 2, STONE, 0);
     g.quad([-w, -h, 0.01], [w, -h, 0.01], [w, h, 0.01], [-w, h, 0.01], [0, 0, 1], WHITE, 1);
@@ -587,13 +589,13 @@ function makeParts() {
   }
   // volets (paire)
   {
-    const g = new PartGeo(), w = 0.55, h = 0.75;
+    const g = new PartGeo(lite), w = 0.55, h = 0.75;
     for (const sd of [-1, 1]) g.box(sd * (w + 0.13 + 0.3), 0, 0.03, 0.29, h, 0.025, [255, 255, 255], 2);
     P.shut = g.geometry();
   }
   // porte d'entrée 1,2 × 2,4
   {
-    const g = new PartGeo();
+    const g = new PartGeo(lite);
     g.box(0, 1.25, 0.04, 0.85, 0.06, 0.04, STONE, 0).box(-0.78, 0.6, 0.04, 0.07, 1.25, 0.04, STONE, 0).box(0.78, 0.6, 0.04, 0.07, 1.25, 0.04, STONE, 0);
     g.box(0, 0.45, 0.02, 0.7, 0.8, 0.02, [255, 255, 255], 2);
     g.quad([-0.7, 1.28, 0.01], [0.7, 1.28, 0.01], [0.7, 1.75, 0.01], [-0.7, 1.75, 0.01], [0, 0, 1], WHITE, 1);
@@ -602,7 +604,7 @@ function makeParts() {
   }
   // devanture de boutique (largeur 2,8) : vitrine, bandeau d'enseigne, store
   {
-    const g = new PartGeo();
+    const g = new PartGeo(lite);
     g.quad([-1.25, 0.25, 0.02], [1.25, 0.25, 0.02], [1.25, 2.55, 0.02], [-1.25, 2.55, 0.02], [0, 0, 1], WHITE, 1);
     g.box(0, 0.12, 0.08, 1.4, 0.13, 0.08, DARK, 0).box(-1.33, 1.4, 0.06, 0.08, 1.3, 0.06, DARK, 0).box(1.33, 1.4, 0.06, 0.08, 1.3, 0.06, DARK, 0);
     g.box(0, 1.4, 0.04, 0.04, 1.15, 0.03, DARK, 0);
@@ -616,7 +618,7 @@ function makeParts() {
   }
   // balcon filant (unité de 3 m) : dalle + garde-corps en fer
   {
-    const g = new PartGeo();
+    const g = new PartGeo(lite);
     g.box(0, 0, 0.32, 1.5, 0.08, 0.32, STONE, 0);
     g.box(0, 1.0, 0.6, 1.5, 0.025, 0.025, DARK, 4).box(0, 0.12, 0.6, 1.5, 0.02, 0.02, DARK, 4);
     for (let k = -7; k <= 7; k++) g.box(k * 0.2, 0.55, 0.6, 0.012, 0.43, 0.012, DARK, 4);
@@ -624,16 +626,16 @@ function makeParts() {
   }
   // balcon de chalet (unité 3 m) : bois plein
   {
-    const g = new PartGeo(), WOOD = [150, 100, 60];
+    const g = new PartGeo(lite), WOOD = [150, 100, 60];
     g.box(0, 0, 0.55, 1.5, 0.1, 0.55, WOOD, 0);
     g.box(0, 0.55, 1.08, 1.5, 0.45, 0.03, WOOD, 0).box(0, 1.05, 1.08, 1.5, 0.05, 0.06, [120, 80, 50], 0);
     P.balcWood = g.geometry();
   }
   // corniche (unité 1 m de long, étirée)
-  { const g = new PartGeo(); g.box(0, 0, 0.14, 0.5, 0.18, 0.14, [255, 255, 255], 5).box(0, 0.2, 0.24, 0.5, 0.05, 0.24, [255, 255, 255], 5); P.cornice = g.geometry(); }
+  { const g = new PartGeo(lite); g.box(0, 0, 0.14, 0.5, 0.18, 0.14, [255, 255, 255], 5).box(0, 0.2, 0.24, 0.5, 0.05, 0.24, [255, 255, 255], 5); P.cornice = g.geometry(); }
   // lucarne
   {
-    const g = new PartGeo(), Z = [150, 158, 170];
+    const g = new PartGeo(lite), Z = [150, 158, 170];
     g.box(0, 0.7, 0.35, 0.6, 0.7, 0.35, Z, 0, true);
     g.quad([-0.38, 0.35, 0.72], [0.38, 0.35, 0.72], [0.38, 1.25, 0.72], [-0.38, 1.25, 0.72], [0, 0, 1], WHITE, 1);
     g.quad([-0.75, 1.4, 0.8], [0.75, 1.4, 0.8], [0.0, 1.95, 0.8], [0.0, 1.95, 0.8], [0, 0, 1], Z, 0);
@@ -642,10 +644,10 @@ function makeParts() {
     P.dormer = g.geometry();
   }
   // cheminée
-  { const g = new PartGeo(); g.box(0, 0.9, 0, 0.45, 0.9, 0.3, [200, 186, 168], 0, true).box(0, 1.85, 0, 0.55, 0.06, 0.4, [150, 140, 130], 0, true); g.box(-0.18, 2.0, 0, 0.08, 0.12, 0.08, [140, 70, 50], 0, true).box(0.18, 2.0, 0, 0.08, 0.12, 0.08, [140, 70, 50], 0, true); P.chim = g.geometry(); }
+  { const g = new PartGeo(lite); g.box(0, 0.9, 0, 0.45, 0.9, 0.3, [200, 186, 168], 0, true).box(0, 1.85, 0, 0.55, 0.06, 0.4, [150, 140, 130], 0, true); g.box(-0.18, 2.0, 0, 0.08, 0.12, 0.08, [140, 70, 50], 0, true).box(0.18, 2.0, 0, 0.08, 0.12, 0.08, [140, 70, 50], 0, true); P.chim = g.geometry(); }
   // réverbère
   {
-    const g = new PartGeo(), I = [34, 38, 36];
+    const g = new PartGeo(lite), I = [34, 38, 36];
     g.box(0, 0.25, 0, 0.14, 0.25, 0.14, I, 4, true).box(0, 2.3, 0, 0.055, 2.1, 0.055, I, 4, true).box(0, 4.45, 0, 0.12, 0.05, 0.12, I, 4, true);
     g.box(0, 4.82, 0, 0.2, 0.3, 0.2, [255, 255, 255], 6, true).box(0, 5.17, 0, 0.26, 0.05, 0.26, I, 4, true);
     P.lamp = g.geometry();
@@ -699,51 +701,57 @@ function makePartTile(T, G, partsMat) {
   return grp;
 }
 const _pm = new THREE.Matrix4();
+// regroupe des objets { x, z } par bloc de 1 024 m
+function byBlock(list) { const m = new Map(); for (const o of list) { const k = Math.floor(o.x / 1024) + ':' + Math.floor(o.z / 1024); let a = m.get(k); if (!a) m.set(k, a = []); a.push(o); } return m; }
 export function buildTown3() {
   DET_U.value = Q.detailR || 600;
   const wallMat = wallMaterial(), roofMat = roofMaterial3(), partsMat = partsMaterial();
-  const G = makeParts();
-  const box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
-  const n = BUILDINGS.length;
-  const B1 = new Float32Array(n * 4), B2 = new Float32Array(n * 4);
-  const walls = new THREE.InstancedMesh(box, wallMat, n);
+  // deux jeux de modèles : complets de près, allégés au loin (cheminées, lucarnes, balcons de bois et lampadaires gardent leur volume)
+  const G = makeParts(), GL = Q.partsLite ? makeParts(true) : G;
+  for (const k of ['chim', 'dormer', 'lamp', 'balcWood']) GL[k] = G[k];
   const col = new THREE.Color();
-  const roofsByType = [[], [], []];
-  BUILDINGS.forEach((b, i) => {
-    walls.setMatrixAt(i, M(b.x, b.base, b.z, b.w, b.h, b.d, b.theta));
-    walls.setColorAt(i, col.setRGB(b.wall[0] / 255, b.wall[1] / 255, b.wall[2] / 255, THREE.SRGBColorSpace));
-    const flags = (b.attL ? 1 : 0) + (b.attR ? 2 : 0) + (b.sideWin ? 4 : 0) + (b.shop ? 8 : 0);
-    B1.set([b.style, b.floorY, b.gh, b.fh], i * 4);
-    B2.set([flags, STYLE[b.style].shutters ? b.shut : -1, b.seed, b.wallFloors], i * 4);
-    if (b.roofType < 3) roofsByType[b.roofType].push(b);
-  });
-  walls.geometry.setAttribute('aB1', new THREE.InstancedBufferAttribute(B1, 4));
-  walls.geometry.setAttribute('aB2', new THREE.InstancedBufferAttribute(B2, 4));
-  walls.computeBoundingSphere(); walls.castShadow = true; walls.receiveShadow = true; walls.frustumCulled = false; scenery.add(walls);
-  freeAfterUpload(null, [walls.instanceMatrix, walls.instanceColor, walls.geometry.attributes.aB1, walls.geometry.attributes.aB2]);
-  // toits
+  // Murs et toits : un maillage par bloc de 1 024 m et non un seul pour tout le pays, pour que la caméra (et la passe
+  // d'ombres) ne dessine que les blocs qu'elle voit. Tous restent affichés à toute distance.
   const roofGeos = [gableGeo(), hipRoofGeo(), mansardGeo()];
-  roofsByType.forEach((list, t) => {
-    if (!list.length) return;
-    const g = roofGeos[t].clone();
-    const rm = new THREE.InstancedMesh(g, roofMat, list.length);
-    const wc = new Float32Array(list.length * 3), rk = new Float32Array(list.length);
-    list.forEach((b, i) => {
-      const ovL = b.attL ? 0 : 0.35, ovR = b.attR ? 0 : 0.35, ovD = b.style === 1 ? 1.4 : t === 2 ? 0.1 : 0.45;
-      const ovW = b.style === 1 ? 1.2 : 0;
-      const len = b.w + ovL + ovR + ovW * 2, shift = (ovR - ovL) / 2;
-      const c = Math.cos(b.theta), s = Math.sin(b.theta);
-      const px = b.x + c * shift, pz = b.z - s * shift;
-      rm.setMatrixAt(i, M(px, b.base + b.h - 0.02, pz, b.d + ovD * 2, b.roofH, len, b.theta + Math.PI / 2));
-      rm.setColorAt(i, col.setRGB(b.roofCol[0] / 255, b.roofCol[1] / 255, b.roofCol[2] / 255, THREE.SRGBColorSpace));
-      const lw = linCol(b.wall); wc.set(lw, i * 3);
-      rk[i] = t === 2 ? 1 : b.style === 1 ? 2 : (b.roofCol[2] > b.roofCol[0] ? 1 : 0);
+  for (const blds of byBlock(BUILDINGS).values()) {
+    const n = blds.length, box = new THREE.BoxGeometry(1, 1, 1); box.translate(0, 0.5, 0);
+    const B1 = new Float32Array(n * 4), B2 = new Float32Array(n * 4);
+    const walls = new THREE.InstancedMesh(box, wallMat, n);
+    const roofsByType = [[], [], []];
+    blds.forEach((b, i) => {
+      walls.setMatrixAt(i, M(b.x, b.base, b.z, b.w, b.h, b.d, b.theta));
+      walls.setColorAt(i, col.setRGB(b.wall[0] / 255, b.wall[1] / 255, b.wall[2] / 255, THREE.SRGBColorSpace));
+      const flags = (b.attL ? 1 : 0) + (b.attR ? 2 : 0) + (b.sideWin ? 4 : 0) + (b.shop ? 8 : 0);
+      B1.set([b.style, b.floorY, b.gh, b.fh], i * 4);
+      B2.set([flags, STYLE[b.style].shutters ? b.shut : -1, b.seed, b.wallFloors], i * 4);
+      if (b.roofType < 3) roofsByType[b.roofType].push(b);
     });
-    rm.geometry.setAttribute('aWallC', new THREE.InstancedBufferAttribute(wc, 3));
-    rm.geometry.setAttribute('aRK', new THREE.InstancedBufferAttribute(rk, 1));
-    rm.computeBoundingSphere(); rm.castShadow = true; rm.receiveShadow = true; rm.frustumCulled = false; scenery.add(rm);
-    freeAfterUpload(null, [rm.instanceMatrix, rm.instanceColor, rm.geometry.attributes.aWallC, rm.geometry.attributes.aRK]);
-  });
+    walls.geometry.setAttribute('aB1', new THREE.InstancedBufferAttribute(B1, 4));
+    walls.geometry.setAttribute('aB2', new THREE.InstancedBufferAttribute(B2, 4));
+    walls.computeBoundingSphere(); walls.castShadow = true; walls.receiveShadow = true; walls.matrixAutoUpdate = false; scenery.add(walls);
+    freeAfterUpload(null, [walls.instanceMatrix, walls.instanceColor, walls.geometry.attributes.aB1, walls.geometry.attributes.aB2]);
+    roofsByType.forEach((list, t) => {
+      if (!list.length) return;
+      const g = roofGeos[t].clone();
+      const rm = new THREE.InstancedMesh(g, roofMat, list.length);
+      const wc = new Float32Array(list.length * 3), rk = new Float32Array(list.length);
+      list.forEach((b, i) => {
+        const ovL = b.attL ? 0 : 0.35, ovR = b.attR ? 0 : 0.35, ovD = b.style === 1 ? 1.4 : t === 2 ? 0.1 : 0.45;
+        const ovW = b.style === 1 ? 1.2 : 0;
+        const len = b.w + ovL + ovR + ovW * 2, shift = (ovR - ovL) / 2;
+        const c = Math.cos(b.theta), s = Math.sin(b.theta);
+        const px = b.x + c * shift, pz = b.z - s * shift;
+        rm.setMatrixAt(i, M(px, b.base + b.h - 0.02, pz, b.d + ovD * 2, b.roofH, len, b.theta + Math.PI / 2));
+        rm.setColorAt(i, col.setRGB(b.roofCol[0] / 255, b.roofCol[1] / 255, b.roofCol[2] / 255, THREE.SRGBColorSpace));
+        const lw = linCol(b.wall); wc.set(lw, i * 3);
+        rk[i] = t === 2 ? 1 : b.style === 1 ? 2 : (b.roofCol[2] > b.roofCol[0] ? 1 : 0);
+      });
+      rm.geometry.setAttribute('aWallC', new THREE.InstancedBufferAttribute(wc, 3));
+      rm.geometry.setAttribute('aRK', new THREE.InstancedBufferAttribute(rk, 1));
+      rm.computeBoundingSphere(); rm.castShadow = true; rm.receiveShadow = true; rm.matrixAutoUpdate = false; scenery.add(rm);
+      freeAfterUpload(null, [rm.instanceMatrix, rm.instanceColor, rm.geometry.attributes.aWallC, rm.geometry.attributes.aRK]);
+    });
+  }
   // éléments de façade : chaque bâtiment est inscrit dans les tuiles que son emprise touche (les éléments restent dans l'emprise)
   for (const b of BUILDINGS) {
     const r = Math.hypot(b.w, b.d) / 2 + 1;
@@ -752,16 +760,17 @@ export function buildTown3() {
   }
   for (const L of LAMPS) partTile(Math.floor(L.x / PART_CHUNK), Math.floor(L.z / PART_CHUNK)).lamps.push(L);
   lazyRankStart();
-  for (const T of PART_TILES.values()) PART_MESHES.push({ mesh: null, rank: lazyRank(), make: () => makePartTile(T, G, partsMat), parent: scenery, own: true, cx: (T.tx + 0.5) * PART_CHUNK, cz: (T.tz + 0.5) * PART_CHUNK });
+  for (const T of PART_TILES.values()) PART_MESHES.push({ mesh: null, rank: lazyRank(), lite: false, make() { return makePartTile(T, this.lite ? GL : G, partsMat); }, parent: scenery, own: true, cx: (T.tx + 0.5) * PART_CHUNK, cz: (T.tz + 0.5) * PART_CHUNK });
   console.log('PV tuiles de façade', PART_TILES.size, 'drape tris', DRAPE.p.length / 9, 'hedges', HEDGES.length, 'walls', GWALLS.length, 'lamps', LAMPS.length);
   // haies et murets
   const hedgeMat = hedgeMaterial();
-  for (const [list, mat, cast] of [[HEDGES, hedgeMat, true], [GWALLS, worldShading(new THREE.MeshStandardMaterial({ map: TEX.stone, color: 0xd8d0c0, roughness: 0.9 }), { key: 'gwall' }), true]]) {
-    if (!list.length) continue;
+  for (const [all, mat] of [[HEDGES, hedgeMat], [GWALLS, worldShading(new THREE.MeshStandardMaterial({ map: TEX.stone, color: 0xd8d0c0, roughness: 0.9 }), { key: 'gwall' })]]) {
     const bx = new THREE.BoxGeometry(1, 1, 1); bx.translate(0, 0.5, 0);
-    const im = new THREE.InstancedMesh(bx, mat, list.length);
-    list.forEach((h, i) => im.setMatrixAt(i, M(h.x, h.y - 0.1, h.z, h.len, h.h + 0.1, h.dep, h.rot)));
-    im.computeBoundingSphere(); im.castShadow = cast; im.receiveShadow = true; im.frustumCulled = false; scenery.add(im);
+    for (const list of byBlock(all).values()) {
+      const im = new THREE.InstancedMesh(bx, mat, list.length);
+      list.forEach((h, i) => im.setMatrixAt(i, M(h.x, h.y - 0.1, h.z, h.len, h.h + 0.1, h.dep, h.rot)));
+      im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; im.matrixAutoUpdate = false; scenery.add(im);
+    }
   }
   // fontaines
   for (const f of FOUNTAINS) {
@@ -776,7 +785,14 @@ export function buildTown3() {
 }
 function updateParts(camPos) {
   const R = DET_U.value + PART_CHUNK * 0.75;
-  for (const p of PART_MESHES) { const d = Math.hypot(p.cx - camPos.x, p.cz - camPos.z); lazyShow(p, d < R, d > lazyFar(R)); }
+  const near = Q.partsLite || Infinity;
+  for (const p of PART_MESHES) {
+    const d = Math.hypot(p.cx - camPos.x, p.cz - camPos.z);
+    // de près, modèles complets ; au-delà, allégés (avec une marge pour ne pas refaire la tuile à chaque pas)
+    const lite = p.lite ? d > near : d > near + 50;
+    if (lite !== p.lite) { p.lite = lite; lazyDrop(p); }
+    lazyShow(p, d < R, d > lazyFar(R));
+  }
 }
 // fabrique les tuiles à la demande voisines d'un point, sans toucher à la visibilité du reste du décor
 export function prewarmTownTiles(camPos) { updateParts(camPos); updateProps(camPos); }

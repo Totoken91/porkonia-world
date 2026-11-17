@@ -51,6 +51,9 @@ export function updateSunShadow(focus) {
 
 // ---------- ciel atmosphérique + nuages (un seul passage)
 export const sky = new Sky();
+// Dôme finement découpé à la place du cube d'origine : douze triangles de dix kilomètres passent mal le découpage du
+// plan proche (de grands pans du ciel prenaient une couleur fausse, vue à hauteur d'homme).
+sky.geometry.dispose(); sky.geometry = new THREE.IcosahedronGeometry(0.5, 5);
 sky.scale.setScalar(10000);
 sky.frustumCulled = false;
 sky.material.uniforms.tNoise = { value: NOISE };

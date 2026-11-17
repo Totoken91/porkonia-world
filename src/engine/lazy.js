@@ -7,7 +7,9 @@ import { renderer } from './renderer.js';
 // Son maillage est fabriqué à sa première apparition et libéré quand la caméra s'en éloigne nettement.
 // La règle de visibilité reste celle de l'appelant : l'image est la même qu'avec tous les maillages créés d'avance.
 // Entrée : { mesh: null, make: () => Object3D, parent, own, rank } ; `own` = la géométrie appartient au maillage.
-export const LAZY = { live: 0, made: 0, dropped: 0 };
+// `deadline` : en jeu, la boucle d'image fixe l'heure après laquelle on ne fabrique plus rien dans cette image ; les
+// tuiles restantes attendent l'image suivante. Ainsi une téléportation étale son travail au lieu de figer l'écran.
+export const LAZY = { live: 0, made: 0, dropped: 0, deadline: Infinity };
 // Rang de dessin. À matériau et profondeur égaux, three.js dessine les objets dans leur ordre de création, et au loin
 // cet ordre décide quel objet l'emporte quand le tampon de profondeur ne les sépare plus. Une tuile reçoit donc à son
 // inscription le rang qu'aurait eu son maillage créé d'avance : l'image ne dépend pas du moment où il est fabriqué.
@@ -20,6 +22,7 @@ renderer.setOpaqueSort((a, b) => a.groupOrder !== b.groupOrder ? a.groupOrder - 
 export function lazyShow(e, visible, far) {
   if (visible) {
     if (!e.mesh) {
+      if (performance.now() > LAZY.deadline) return;
       const m = e.mesh = e.make(); let k = 0;
       m.traverse(o => { o.matrixAutoUpdate = false; o.userData.rank = e.rank + (k++) * 1e-8; });
       e.parent.add(m); LAZY.live++; LAZY.made++;

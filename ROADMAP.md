@@ -10,25 +10,26 @@ Le détail technique et les mesures sont dans `CLAUDE.md`, la vision de Kenny da
 
 ## 1. Ce qui était fragile
 - [ ] Mesure sur un vrai téléphone : Kenny ouvre l'aperçu avec `?mesure` et envoie le tableau. Rien ne remplace ça.
-- [ ] Triangles : alléger voitures, façades au loin, personnages au loin.
-- [ ] Murs, toits, haies, murets : découpés par tuile et triés par la caméra, au lieu d'un maillage pour tout le pays.
-- [ ] Téléportation : fabrication des tuiles étalée sur plusieurs images.
+- [x] Triangles, première passe : voitures 2,5 fois plus légères, façades allégées au-delà de 190 m (Économe) ou 260 m (Haute). Douzi City passe de 7,2 à 4,6 M de triangles dans la passe principale, la route de 1,3 à 0,9 M.
+- [ ] Triangles, suite : personnages au loin (72 citoyens à 3 000 triangles), arbres, nombre d'appels de dessin (il a monté : 812 à Douzi).
+- [x] Murs, toits, haies, murets : découpés par bloc de 1 024 m et triés par la caméra.
+- [x] Téléportation : au plus 7 ms de fabrication de tuiles par image, le reste attend l'image suivante.
 - [ ] Plan d'une ville calculé à l'approche (possible depuis les graines par ville).
 
-## 2. Conduite
-- [ ] Modèles de voitures cartoon calculés en code, plusieurs types, roues qui tournent et braquent.
-- [ ] Physique : adhérence, dérapage au frein à main, contre-braquage, transfert de masse visible.
-- [ ] Collisions : bâtiments, arbres, voitures, mobilier urbain qui vole.
-- [ ] Cochons et citoyens renversés : ils volent, roulent, puis se relèvent.
-- [ ] Sensations : caméra de poursuite, champ de vision à la vitesse, traces de pneus, fumée, poussière.
-- [ ] Son : moteur, crissement, chocs, couinements (premier son du jeu).
-- [ ] Commandes tactiles : frein à main.
-- [ ] Plus tard : dégâts visibles, klaxon, radio, courses contre la montre, garage.
+## 2. Conduite (première version faite, à régler en jouant)
+- [x] Quatre modèles cartoon calculés en code (Porkette, Berline Groin, Fourgon du Marché, Bolide Truffe), roues qui tournent et braquent, chacun avec son caractère. Touche G pour en changer.
+- [x] Physique : adhérence, dérapage au frein à main (Espace), contre-braquage, transfert de masse visible. En partie : réglée par simulation, jamais essayée manette ou doigts en main. À régler avec Kenny.
+- [x] Collisions : bâtiments, arbres, rochers, gros objets ; mobilier, voitures garées et circulation s'envolent. En partie : haies et clôtures de ville se traversent encore, le train aussi.
+- [x] Cochons et citoyens renversés : ils volent en gesticulant, roulent, puis se relèvent. En partie : c'est un corps rigide qui tournoie, pas un pantin articulé (le citoyen standard n'a pas de squelette).
+- [x] Sensations : caméra de poursuite, champ de vision à la vitesse, traces de pneus, fumée, poussière, secousses, score de dérapage avec record.
+- [x] Son : moteur, crissement, chocs, couinements, klaxon (H). En partie : synthétisé à l'aveugle, jamais écouté ; à régler à l'oreille.
+- [x] Commandes tactiles : bouton frein à main.
+- [ ] Plus tard : dégâts visibles, radio, courses contre la montre, garage, habitants qui s'écartent au klaxon.
 
-## 3. Paysage
-- [ ] Bocage : champs en mosaïque (blé, colza, prairies, labours), haies, murets, clôtures.
-- [ ] Routes de campagne plus étroites et plus claires, bas-côtés fleuris, alignements d'arbres.
-- [ ] Lumière et ciel plus doux, lointains bleutés.
+## 3. Paysage (première passe faite)
+- [x] Bocage : champs irréguliers partout en plaine (blé, colza, prairies, luzerne, labours, lavande, chaume), chemins de terre, haies en 3D sur les limites. Reste : murets, clôtures, barrières.
+- [x] Routes de campagne plus claires, accotements sablés, ligne centrale discrète. Reste : bas-côtés fleuris, alignements d'arbres, chemins creux.
+- [ ] Lumière et ciel plus doux, lointains bleutés. (Fait : le ciel n'affiche plus de grands pans faux à hauteur d'homme.)
 - [ ] Arbres plus ronds, plus cartoon.
 - [ ] Petits charmes : fleurs, meules, calvaires, lavoirs, moulins, épouvantails, troupeaux.
 - [ ] Rivières et ponts.

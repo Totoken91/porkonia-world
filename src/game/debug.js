@@ -17,10 +17,13 @@ import { exStart, exTeleport, exToggleCar, exUpdate, exCamera, exSetView, exPlac
 import { worldSignature } from '../world/signature.js';
 import { setNotch, physicsStep, setRoute, closeStation, checkStops, loadOffer, offersFor, applyRouteSwitches } from './railgame.js';
 import { PAUSE } from './loop.js';
+import { carSetModel, DRIVE, driveUpdate } from './drive.js';
+import { carGeo } from '../world/cars.js';
 
 // ---------- outils de test : window.__pe, utilisé par tools/*.mjs, tools/aer.js et le mode ?mesure
 export function installDebug(info) {
   window.__pe = { train, game, cam, setCamMode, setNotch, STATIONS, TRACKS, physicsStep, updateTrainPose, openMap, closeMap, setRoute, placeTrainAt, rebuildConsist, closeStation, PILLARS, PORTALS, camera, scene, hAt, LANDMARK_SPOTS, BUILDINGS, renderer, checkStops, loadOffer, stationOffset, nextOptions, upcomingLimit, STOP_MARK, offersFor, applyRouteSwitches, flipTrain, applyTime, Q, VEG, composer, waterAt, THREE, PART_MESHES, DRAPES, scenery, EX, exStart, exTeleport, exToggleCar, groundAt, ROADS, NPC, updateNpcs, STATION_BY_NAME, exUpdate, exCamera };
+  window.__pe.carGeo = carGeo; window.__pe.carSetModel = carSetModel; window.__pe.DRIVE = DRIVE; window.__pe.driveUpdate = driveUpdate;
   window.__pe.PROPS = PROPS; window.__pe.LAZY = LAZY; window.__pe.info = info; window.__pe.worldSignature = worldSignature; window.__pe.view = (type, k, dist, h, ang = 0.6) => { const a = PROPS.where[type]; const p = a[Math.min(a.length - 1, k)]; const x = p[0] + Math.sin(ang) * dist, z = p[1] + Math.cos(ang) * dist; EX.mode = 'pied'; exSetView(); exPlacePlayer(x, z, ang); EX.P.y = groundAt(x, z) + h; EX.P.pitch = -Math.atan2(h - 1.5, dist) * 0.9; for (let q = 0; q < 90; q++) updateNpcs(0.05); return type + ' ' + a.length; };
   window.__pe.exToggleView = exToggleView; window.__pe.exTogglePig = exTogglePig; window.__pe.exSetView = exSetView;
   window.__pe.go = (x, z, yaw, pitch = 0, mode = 'pied') => { EX.mode = mode; exSetView(); if (mode === 'auto') { exPlaceCar(x, z, yaw); EX.car.orbit = 0; camera.position.set(x - Math.sin(yaw) * 7, groundAt(x, z) + 3.5, z - Math.cos(yaw) * 7); } else { exPlacePlayer(x, z, yaw); EX.P.pitch = pitch; } EX.P.x = x; EX.P.z = z; };

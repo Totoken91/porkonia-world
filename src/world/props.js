@@ -8,7 +8,8 @@ import { noiseAt } from '../engine/textures.js';
 import { worldShading } from '../engine/lighting.js';
 import { lazyRankStart, lazyRank, lazyShow, lazyFar } from '../engine/lazy.js';
 import { Geo, M } from '../engine/geo.js';
-import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt } from './registry.js';
+import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, groundAt, knockAdd } from './registry.js';
+import { carMaterial, carGeo, MODELE_IDS, CAR_COLORS } from './cars.js';
 import { scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
 
       // gros objets infranchissables : {x, z, r}
@@ -99,20 +100,30 @@ function propsMaterial() {
   m.customProgramCacheKey = () => 'props';
   return m;
 }
+// rayon (m) et masse relative du mobilier que la voiture peut renverser ; rayon des objets qui l'arrêtent
+const RENVERSABLE = { banc: [0.9, 0.5], poubelle: [0.4, 0.15], jardiniere: [0.7, 0.4], bouche: [0.3, 0.3], boite: [0.35, 0.3], feu: [0.3, 0.4], stop: [0.25, 0.15], fleche: [0.25, 0.15],
+  terrasse: [1.4, 0.5], ardoise: [0.4, 0.1], enseigne: [0.3, 0.2], caisses: [0.7, 0.2], tonneaux: [0.9, 0.5], futs: [0.8, 0.5], etal: [1.5, 0.5], table_pique: [1.1, 0.5], linge: [1.2, 0.1],
+  cloture: [1.2, 0.15], epouvantail: [0.4, 0.1], delineateur: [0.15, 0.05], poteau: [0.25, 0.6], panneau_pub: [0.5, 0.5], potager: [1.2, 0.2] };
+const SOLIDE = { kiosque: 2.0, abribus: 1.8, cabine: 0.7, silos: 4.5, cuves: 3.6, alambic: 2.2, cheminee: 2.2, hangar: 8, conteneurs: 3.5, grue: 2.5, chateau_eau: 3.5, serre: 4.5, tracteur: 1.8 };
 export function buildProps() {
-  const mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
+  const mat = PROPS.mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
   lazyRankStart();
   for (const [, L] of PROPS.map) {
     const d = PROPS.defs[L.type]; if (!d) continue;
     const list = L.list;
     const make = () => {
     const im = new THREE.InstancedMesh(d.geo, mat, list.length);
-    list.forEach((p, i) => { im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[4], p[4], p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
+    list.forEach((p, i) => { const sc = p[6] ? 0 : p[4]; im.setMatrixAt(i, M(p[0], p[1], p[2], sc, sc, sc, p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
     im.computeBoundingSphere(); im.castShadow = d.cast; im.receiveShadow = true;
     freeAfterUpload(null, [im.instanceMatrix, im.instanceColor]);
     return im;
     };
-    PROPS.meshes.push({ mesh: null, make, parent: grp, rank: lazyRank(), cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 });
+    const tile = { mesh: null, make, parent: grp, rank: lazyRank(), cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 };
+    PROPS.meshes.push(tile);
+    // conduite : le petit mobilier se renverse (p[6] marque l'objet parti), les gros objets arrêtent la voiture
+    const leger = RENVERSABLE[L.type], gros = SOLIDE[L.type];
+    if (leger) for (const p of list) knockAdd({ x: p[0], z: p[2], r: leger[0] * p[4], masse: leger[1], kind: 'prop', type: L.type, p, tile });
+    else if (gros) for (const p of list) PROP_COLL.push({ x: p[0], z: p[2], r: gros * p[4] });
   }
   PROPS.map.clear();
   scenery.add(grp);
@@ -293,19 +304,26 @@ export function propsCountry(rnd) {
 }
 export function buildParked() {
   if (!PARKED.length) return;
-  const cols = [[226, 36, 48], [36, 110, 230], [250, 246, 235], [250, 200, 30], [50, 180, 110], [250, 130, 40], [240, 130, 170], [70, 200, 210], [150, 80, 200], [60, 60, 70]];
   const by = new Map();
   for (const p of PARKED) { const k = Math.floor(p.x / 200) + ':' + Math.floor(p.z / 200); let a = by.get(k); if (!a) by.set(k, a = []); a.push(p); }
-  const col = new THREE.Color();
+  const col = new THREE.Color(), mat = carMaterial();
+  // modèle et couleur tirés de la position : stables d'une partie à l'autre
+  const PARTS = [0, 0, 0, 1, 1, 1, 1, 2, 2, 3];
   lazyRankStart();
   for (const [, a] of by) {
-    for (const p of a) PROP_COLL.push({ x: p.x, z: p.z, r: 1.5 });
+    for (const p of a) { const h = hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)); p.model = MODELE_IDS[PARTS[(h >>> 9) % PARTS.length]]; p.col = CAR_COLORS[(h >>> 2) % CAR_COLORS.length]; }
     const make = () => {
-    const im = new THREE.InstancedMesh(CARS.geo, CARS.mat, a.length);
-    a.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.1, p.z, 1, 1, 1, p.yaw)); const c = cols[(hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)) >>> 2) % cols.length]; im.setColorAt(i, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); });
-    im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true;
-    return im;
+      const grp = new THREE.Group();
+      for (const id of MODELE_IDS) {
+        const l = a.filter(p => p.model === id && !p.gone); if (!l.length) continue;
+        const im = new THREE.InstancedMesh(carGeo(id).fixe, mat, l.length);
+        l.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.03, p.z, 1, 1, 1, p.yaw)); im.setColorAt(i, col.setRGB(p.col[0] / 255, p.col[1] / 255, p.col[2] / 255, THREE.SRGBColorSpace)); });
+        im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; grp.add(im);
+      }
+      return grp;
     };
-    PROPS.meshes.push({ mesh: null, make, parent: scenery, rank: lazyRank(), cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 });
+    const tile = { mesh: null, make, parent: scenery, rank: lazyRank(), cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 };
+    PROPS.meshes.push(tile);
+    for (const p of a) knockAdd({ x: p.x, z: p.z, r: 1.5, masse: 3, kind: 'parked', p, tile });
   }
 }

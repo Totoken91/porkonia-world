@@ -34,5 +34,7 @@ export function lazyShow(e, visible, far) {
     }
   }
 }
+// libère le maillage d'une tuile dont le contenu a changé : il sera refait à la prochaine image où elle est visible
+export function lazyDrop(e) { if (e.mesh) lazyShow(e, false, true); }
 // distance au-delà de laquelle un maillage masqué est libéré (marge pour ne pas le refaire à chaque demi-tour)
 export const lazyFar = R => R * 1.4 + 300;

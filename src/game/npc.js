@@ -5,12 +5,13 @@ import { QKEY } from '../engine/quality.js';
 import { STATIONS, hAt } from '../world/land.js';
 import { scene } from '../engine/renderer.js';
 import { Mset } from '../engine/geo.js';
-import { TOWN_SEGS, SPOTS, ROADS, CARS, groundAt } from '../world/registry.js';
+import { TOWN_SEGS, SPOTS, ROADS, groundAt } from '../world/registry.js';
+import { MODELE_IDS, CAR_COLORS, carGeo, carMaterial } from '../world/cars.js';
 import { EX, clock } from './state.js';
 import { makeCitizenPool } from '../world/assets.js';
 
 // ---------- habitants : piétons sur les trottoirs, voitures dans les rues et sur les routes
-export const NPC = { walks: [], wgrid: new Map(), lanes: [], lgrid: new Map(), peds: [], cars: [], pm: null, cm: null, cur: 0, ccur: 0 };
+export const NPC = { walks: [], wgrid: new Map(), lanes: [], lgrid: new Map(), peds: [], cars: [], pm: null, cms: [], cur: 0, ccur: 0 };
 export function buildNpcs() {
   const gadd = (grid, cell, x, z, id) => { const k = Math.floor(x / cell) + ':' + Math.floor(z / cell); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(id); };
   const ends = new Map();
@@ -40,11 +41,15 @@ export function buildNpcs() {
   const mk = (g, n, m2) => { const m = new THREE.InstancedMesh(g, m2, n); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; scene.add(m); return m; };
   NPC.pool = makeCitizenPool(NP); for (const e of NPC.pool.meshes) scene.add(e.m);
   for (let i = 0; i < NP; i++) { const h = hashStr('ped' + i); NPC.peds.push({ w: null, t: 0, dir: 1, v: 1.0 + (h % 70) / 100, ph: (h % 628) / 100, lat: ((h >>> 3) % 100) / 100 - 0.5, sc: 1.1 + ((h >>> 6) % 20) / 100, s: 0 }); }
-  NPC.cm = mk(CARS.geo, NC, CARS.mat);
-  const cols = [[226, 36, 48], [36, 110, 230], [250, 246, 235], [250, 200, 30], [50, 180, 110], [250, 130, 40], [240, 130, 170], [70, 200, 210], [150, 80, 200]];
-  for (let i = 0; i < NC; i++) { const c = cols[i % cols.length]; NPC.cm.setColorAt(i, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); NPC.cars.push({ l: null, s: 0, dir: 1, x: 0, z: 0, yaw: 0 }); }
+  // circulation : un maillage instancié par modèle de voiture
+  const PARTS = [0, 0, 0, 1, 1, 1, 1, 2, 2, 3], parModele = {};
+  for (let i = 0; i < NC; i++) { const id = MODELE_IDS[PARTS[i % PARTS.length]]; (parModele[id] = parModele[id] || []).push(i); NPC.cars.push({ l: null, s: 0, dir: 1, x: 0, z: 0, yaw: 0, model: id }); }
   const hide = new THREE.Matrix4().makeScale(0, 0, 0);
-  for (let i = 0; i < NC; i++) NPC.cm.setMatrixAt(i, hide);
+  for (const id in parModele) {
+    const im = mk(carGeo(id).fixe, parModele[id].length, carMaterial());
+    parModele[id].forEach((ci, k) => { const c = CAR_COLORS[(ci * 7 + 3) % (CAR_COLORS.length - 1)]; im.setColorAt(k, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); im.setMatrixAt(k, hide); NPC.cars[ci].im = im; NPC.cars[ci].k = k; });
+    NPC.cms.push(im);
+  }
 }
 function npcPick(grid, cell, list, rmin, rmax) {
   const px = EX.P.x, pz = EX.P.z, R = Math.ceil(rmax / cell);
@@ -74,6 +79,7 @@ export function updateNpcs(dt) {
   // piétons
   for (let q = 0; q < 6; q++) {
     const i = NPC.cur = (NPC.cur + 1) % NPC.peds.length, p = NPC.peds[i];
+    if (p.fly) continue;
     if (p.spot && Math.hypot(p.spot.x - px, p.spot.z - pz) < 190) continue;
     if (p.w && Math.hypot(lerp(p.w.x0, p.w.x1, p.t) - px, lerp(p.w.z0, p.w.z1, p.t) - pz) < 190) continue;
     if (p.spot) { p.spot.used = false; p.spot = null; }
@@ -83,25 +89,29 @@ export function updateNpcs(dt) {
     if (p.w) { p.t = Math.random(); p.dir = Math.random() < 0.5 ? 1 : -1; }
   }
   NPC.peds.forEach((p, i) => {
-    if (p.spot) { const sp = p.spot; NPC.pool.set(i, Mset(_nm, sp.x, groundAt(sp.x, sp.z) + 0.14, sp.z, p.sc, p.sc, p.sc, sp.yaw + Math.sin(t * 0.5 + p.ph) * 0.25), Math.sin(t * 1.3 + p.ph) * 0.5, 0.12); return; }
-    if (!p.w) { NPC.pool.set(i, _nm.makeScale(0, 0, 0), 0, 0); return; }
+    if (p.fly) return;   // projeté par la voiture : sa matrice vient de game/flyers.js
+    if (p.spot) { const sp = p.spot; p.x = sp.x; p.z = sp.z; p.yaw = sp.yaw; NPC.pool.set(i, Mset(_nm, sp.x, groundAt(sp.x, sp.z) + 0.14, sp.z, p.sc, p.sc, p.sc, sp.yaw + Math.sin(t * 0.5 + p.ph) * 0.25), Math.sin(t * 1.3 + p.ph) * 0.5, 0.12); return; }
+    if (!p.w) { p.x = undefined; NPC.pool.set(i, _nm.makeScale(0, 0, 0), 0, 0); return; }
     const w = p.w;
     p.t += p.dir * p.v * dt / w.len; p.s += p.v * dt;
     if (p.t > 1) { p.t = 1; p.dir = -1; } else if (p.t < 0) { p.t = 0; p.dir = 1; }
     const ux = (w.x1 - w.x0) / w.len, uz = (w.z1 - w.z0) / w.len;
     const x = lerp(w.x0, w.x1, p.t) - uz * p.lat * 1.6, z = lerp(w.z0, w.z1, p.t) + ux * p.lat * 1.6;
-    NPC.pool.set(i, Mset(_nm, x, hAt(x, z) + 0.2, z, p.sc, p.sc, p.sc, Math.atan2(ux * p.dir, uz * p.dir)), p.s * 4.6 + p.ph, 1);
+    p.x = x; p.z = z; p.yaw = Math.atan2(ux * p.dir, uz * p.dir);
+    NPC.pool.set(i, Mset(_nm, x, hAt(x, z) + 0.2, z, p.sc, p.sc, p.sc, p.yaw), p.s * 4.6 + p.ph, 1);
   });
   NPC.pool.flush();
   // circulation
   for (let q = 0; q < 3; q++) {
     const i = NPC.ccur = (NPC.ccur + 1) % NPC.cars.length, c = NPC.cars[i];
+    if (c.fly) continue;
     if (c.l && Math.hypot(c.x - px, c.z - pz) < 620) continue;
     c.l = npcPick(NPC.lgrid, 400, NPC.lanes, 70, 560);
     if (c.l) { c.s = Math.random() * c.l.len; c.dir = Math.random() < 0.5 ? 1 : -1; c.yaw = NaN; }
   }
-  NPC.cars.forEach((c, i) => {
-    if (!c.l) { NPC.cm.setMatrixAt(i, _nm.makeScale(0, 0, 0)); return; }
+  NPC.cars.forEach(c => {
+    if (c.fly) return;
+    if (!c.l) { c.im.setMatrixAt(c.k, _nm.makeScale(0, 0, 0)); return; }
     let l = c.l;
     c.s += c.dir * l.v * dt;
     if (c.s > l.len || c.s < 0) {
@@ -118,7 +128,7 @@ export function updateNpcs(dt) {
     c.x = lerp(a[0], b[0], f) - dz / dl * 1.75; c.z = lerp(a[1], b[1], f) + dx / dl * 1.75;
     const yaw = Math.atan2(dx, dz);
     if (isNaN(c.yaw)) c.yaw = yaw; else { let d = yaw - c.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); c.yaw += d * Math.min(1, dt * 6); }
-    NPC.cm.setMatrixAt(i, Mset(_nm, c.x, groundAt(c.x, c.z) + 0.12, c.z, 1, 1, 1, c.yaw));
+    c.im.setMatrixAt(c.k, Mset(_nm, c.x, groundAt(c.x, c.z) + 0.03, c.z, 1, 1, 1, c.yaw));
   });
-  NPC.cm.instanceMatrix.needsUpdate = true;
+  for (const im of NPC.cms) im.instanceMatrix.needsUpdate = true;
 }

@@ -11,7 +11,7 @@ import { layoutTown2, placeFarms2, buildTown3 } from './towns.js';
 import { buildStation, landmark } from './landmarks.js';
 import { buildCitizens, buildHerds } from './creatures.js';
 import { buildVegetation, buildHay } from './vegetation.js';
-import { buildGoblins, buildSmoke, buildBirds, buildCars } from './ambiance.js';
+import { buildGoblins, buildSmoke, buildBirds } from './ambiance.js';
 import { buildRoads } from './roads.js';
 
 export async function buildScenery() {
@@ -35,7 +35,6 @@ export async function buildScenery() {
   setStatus("Pousse de l'herbe…"); await tick();
   buildSmoke();
   buildBirds(rngPhase('oiseaux'));
-  buildCars();
   buildParked();
   scene.add(scenery);
   return { nTrees, nBuildings: BUILDINGS.length, streets: STREETS.length, roads: nRoads, props: nProps, spots: SPOTS.length, parked: PARKED.length };

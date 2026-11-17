@@ -66,7 +66,7 @@ export function updateCitizens(t, dt, camPos) {
   }
   if (any) ms.skin.instanceMatrix.needsUpdate = ms.shirt.instanceMatrix.needsUpdate = ms.pants.instanceMatrix.needsUpdate = true;
 }
-const herds = { mesh: null, pigs: [] };
+export const herds = { mesh: null, pigs: [] };
 export function buildHerds(rnd) {
   const pigs = [];
   const spots = [];
@@ -91,6 +91,7 @@ export function updateHerds(t, dt, camPos) {
   let j = 0; const HR = 520;
   pigs.forEach((p, i) => {
     if (Math.abs(p.x - camPos.x) > HR || Math.abs(p.z - camPos.z) > HR) return;
+    if (p.fly) { mesh.setMatrixAt(j, p.fm); mesh.setColorAt(j, p.col); j++; return; }   // projeté par la voiture (game/drive.js)
     const dx = p.tx - p.x, dz = p.tz - p.z, d = Math.hypot(dx, dz);
     if (d < 0.3) { p.wait -= dt; if (p.wait < 0) { p.tx = p.cx + (rnd() - 0.5) * 34; p.tz = p.cz + (rnd() - 0.5) * 34; p.wait = 2 + rnd() * 6; } }
     else { const sp = Math.min(d, 0.9 * dt); p.x += dx / d * sp; p.z += dz / d * sp; const want = Math.atan2(dx, dz); let da = want - p.rot; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI; p.rot += da * Math.min(1, dt * 3); }

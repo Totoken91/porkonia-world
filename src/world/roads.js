@@ -1,7 +1,7 @@
 // Routes entre villes et collisions
 import { clamp, mulberry, lerp } from '../engine/util.js';
 import { STATIONS, NX, NZ, WW, HH, hAt, waterAt, slopeAt, tmGet, tmMark } from './land.js';
-import { surfStamp, groundAt, ROADS, PROP_COLL } from './registry.js';
+import { surfStamp, groundAt, ROADS, PROP_COLL, treePush } from './registry.js';
 import { TRACKS, STUBS, sampleFrames, PLATFORM_HALF } from './tracks.js';
 import { Drape, DRAPES, terrainN, BUILDINGS, LANDMARK_SPOTS, FOUNTAINS } from './scenery.js';
 import { propsRoad } from './props.js';
@@ -145,7 +145,7 @@ export function buildRoads() {
 }
 
 // ---------- collisions avec le bâti
-const COLL = { grid: new Map(), circles: [] };
+const COLL = { grid: new Map() };
 export function buildColliders() {
   const add = (k, b) => { let a = COLL.grid.get(k); if (!a) COLL.grid.set(k, a = []); a.push(b); };
   for (const b of BUILDINGS) {
@@ -154,14 +154,17 @@ export function buildColliders() {
     for (let j = Math.floor((b.z - r) / 24); j <= Math.floor((b.z + r) / 24); j++) for (let i = Math.floor((b.x - r) / 24); i <= Math.floor((b.x + r) / 24); i++) add(i + ':' + j, o);
   }
   const RAD = { palais: 42, chateau: 30, brasserie: 22, eglise: 14, fumoir: 12, moulin: 7, phare: 5, statue: 6, chope: 6, antenne: 5 };
-  for (const l of LANDMARK_SPOTS) COLL.circles.push({ x: l.x, z: l.z, r: RAD[l.kind] || 8 });
-  for (const f of FOUNTAINS) COLL.circles.push({ x: f.x, z: f.z, r: 4.8 });
-  for (const c of PROP_COLL) COLL.circles.push(c);
+  // obstacles ronds : rangés dans la même grille que les bâtiments
+  const circle = c => { for (let j = Math.floor((c.z - c.r - 2) / 24); j <= Math.floor((c.z + c.r + 2) / 24); j++) for (let i = Math.floor((c.x - c.r - 2) / 24); i <= Math.floor((c.x + c.r + 2) / 24); i++) add(i + ':' + j, c); };
+  for (const l of LANDMARK_SPOTS) circle({ x: l.x, z: l.z, r: RAD[l.kind] || 8 });
+  for (const f of FOUNTAINS) circle({ x: f.x, z: f.z, r: 4.8 });
+  for (const c of PROP_COLL) circle(c);
 }
 export function collide(p, rad) { // pousse p hors des bâtiments ; renvoie true s'il y a eu contact
   let hit = false;
   const a = COLL.grid.get(Math.floor(p.x / 24) + ':' + Math.floor(p.z / 24));
   if (a) for (const b of a) {
+    if (b.r !== undefined) { const dx = p.x - b.x, dz = p.z - b.z, d = Math.hypot(dx, dz); if (d < b.r + rad && d > 0.01) { hit = true; p.x = b.x + dx / d * (b.r + rad); p.z = b.z + dz / d * (b.r + rad); } continue; }
     const dx = p.x - b.x, dz = p.z - b.z, lx = b.c * dx - b.s * dz, lz = b.s * dx + b.c * dz;
     const px = b.hw + rad - Math.abs(lx), pz = b.hd + rad - Math.abs(lz);
     if (px <= 0 || pz <= 0) continue;
@@ -170,7 +173,7 @@ export function collide(p, rad) { // pousse p hors des bâtiments ; renvoie true
     if (px < pz) nlx = Math.sign(lx || 1) * (b.hw + rad); else nlz = Math.sign(lz || 1) * (b.hd + rad);
     p.x = b.x + b.c * nlx + b.s * nlz; p.z = b.z - b.s * nlx + b.c * nlz;
   }
-  for (const c of COLL.circles) { const dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz); if (d < c.r + rad && d > 0.01) { hit = true; p.x = c.x + dx / d * (c.r + rad); p.z = c.z + dz / d * (c.r + rad); } }
+  if (treePush(p, rad)) hit = true;
   return hit;
 }
 export function inWater(x, z) { const w = waterAt(x, z); return w > -1e8 && groundAt(x, z) < w - 0.55; }

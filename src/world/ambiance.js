@@ -5,10 +5,9 @@ import { scene } from '../engine/renderer.js';
 import { NOISE } from '../engine/textures.js';
 import { SUN_DIR, SUN_COL } from '../engine/lighting.js';
 import { M, Mset } from '../engine/geo.js';
-import { SMOKERS, CARS } from './registry.js';
+import { SMOKERS } from './registry.js';
 import { GOBLIN_SPOTS } from './tracks.js';
 import { Kit, scenery } from './scenery.js';
-import { makeCarAssets } from './assets.js';
 import { _cm } from './creatures.js';
 
 // ---------- gobelins réseau (n'existent pas)
@@ -98,4 +97,3 @@ export function updateBirds(t) {
   }
   mesh.instanceMatrix.needsUpdate = true;
 }
-export function buildCars() { const a = makeCarAssets(); CARS.geo = a.geo; CARS.geoHi = a.geoHi; CARS.mat = a.mat; }

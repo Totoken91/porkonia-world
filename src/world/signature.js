@@ -24,6 +24,6 @@ export function worldSignature() {
     buildings: entry(BUILDINGS), streets: entry(STREETS), streetSegments: entry(TOWN_SEGS.map(s => [s.p0, s.p1, s.hw, s.sw])),
     farms: entry(FARMS), landmarks: entry(LANDMARK_SPOTS), fountains: entry(FOUNTAINS), lamps: entry(LAMPS), hedges: entry(HEDGES), lowWalls: entry(GWALLS),
     townTrees: entry(TOWN_TREES), roads: entry(ROADS.map(r => r.pts)),
-    props: { n: PROPS.n, h: (digest(props) >>> 0).toString(16) }, parked: entry(PARKED), spots: entry(SPOTS.map(s => [s.x, s.z, s.yaw])),
+    props: { n: PROPS.n, h: (digest(props) >>> 0).toString(16) }, parked: entry(PARKED.map(p => [p.x, p.z, p.yaw])), spots: entry(SPOTS.map(s => [s.x, s.z, s.yaw])),
   };
 }

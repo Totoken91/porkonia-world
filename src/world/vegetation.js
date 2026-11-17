@@ -8,7 +8,7 @@ import { noiseAt, TEX } from '../engine/textures.js';
 import { worldShading } from '../engine/lighting.js';
 import { lazyRankStart, lazyRank, lazyFar, lazyShow } from '../engine/lazy.js';
 import { linCol, Geo, M, Mset } from '../engine/geo.js';
-import { PROPS } from './registry.js';
+import { PROPS, treeAdd } from './registry.js';
 import { TRACKS } from './tracks.js';
 import { TOWN_TREES, scenery } from './scenery.js';
 
@@ -360,6 +360,7 @@ export function buildVegetation(rnd) {
     const key = (Math.floor((x + WW / 2) / CH)) + ':' + (Math.floor((z + HH / 2) / CH)) + ':' + sp;
     if (!lists.has(key)) lists.set(key, []);
     lists.get(key).push([x, y, z, s, rot, col]);
+    if (sp !== 'buisson') treeAdd(x, z, sp === 'rocher' ? 0.8 * s : 0.32 * s);   // tronc ou rocher infranchissable
   };
   const dens = Q.trees;
   const STEP = 13;

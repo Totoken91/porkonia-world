@@ -1,18 +1,21 @@
 // Balade libre : piéton, voiture, cochon de monte
 import * as THREE from 'three';
 import { $, clamp, lerp } from '../engine/util.js';
-import { STATION_BY_NAME, STATIONS, WW, HH, tmGet } from '../world/land.js';
+import { STATION_BY_NAME, STATIONS, WW, HH } from '../world/land.js';
 import { scene, camera, canvas } from '../engine/renderer.js';
-import { groundAt, CARS } from '../world/registry.js';
+import { groundAt } from '../world/registry.js';
 import { EX, EX_SAVE, game } from './state.js';
 import { makePorc, makeCarInterior } from '../world/assets.js';
 import { buildColliders, inWater, collide } from '../world/roads.js';
 import { rebuildConsist, setCamMode, cam, train, stationOffset, nextOptions, advanceHead, flipTrain } from './train.js';
 import { toast, mapState, closeMap, openMap } from './ui.js';
 import { buildNpcs, updateNpcs } from './npc.js';
+import { updateFlyers } from './flyers.js';
+import { sfxInit, sfxHorn } from './sfx.js';
+import { DRIVE, carSetModel, carNextModel, driveUpdate, driveCamera } from './drive.js';
 
 export function exPlacePlayer(x, z, yaw) { const P = EX.P; P.x = x; P.z = z; if (yaw !== undefined) P.yaw = yaw; P.y = groundAt(x, z) + 1.62; }
-export function exPlaceCar(x, z, yaw) { const c = EX.car; c.x = x; c.z = z; c.yaw = yaw; c.v = 0; c.y = groundAt(x, z); }
+export function exPlaceCar(x, z, yaw) { const c = EX.car; c.x = x; c.z = z; c.yaw = yaw; c.camYaw = yaw; c.v = c.vx = c.vz = c.yawRate = 0; c.drift = false; c.y = groundAt(x, z); }
 function exTownSpawn(st) {
   const tw = st.town;
   if (tw && tw.spawn) return { p: tw.spawn, car: tw.carSpot, yaw: Math.atan2(-tw.T.U[0], -tw.T.U[1]), carYaw: Math.atan2(tw.T.U[0], tw.T.U[1]) };
@@ -29,11 +32,8 @@ export function exTeleport(st) {
 export function exInit() {
   buildColliders();
   buildNpcs();
-  // voiture du joueur
-  const mat = CARS.mat.clone(); mat.color = new THREE.Color().setRGB(123 / 255, 30 / 255, 46 / 255, THREE.SRGBColorSpace);
-  mat.onBeforeCompile = CARS.mat.onBeforeCompile; mat.customProgramCacheKey = CARS.mat.customProgramCacheKey;
-  const body = new THREE.Mesh(CARS.geoHi, mat); body.castShadow = true; body.receiveShadow = true;
-  const m = new THREE.Group(); m.add(body); EX.car.cabin = null; scene.add(m); EX.car.mesh = m;   // habitacle : fabriqué à la première vue intérieure
+  let modele = 'porkette'; try { modele = JSON.parse(localStorage.getItem(EX_SAVE) || '{}').model || modele; } catch (e) { /* sauvegarde illisible */ }
+  carSetModel(modele);
   { const pa = makePorc(); const pm = new THREE.Mesh(pa.geo, pa.mat); pm.castShadow = true; pm.receiveShadow = true; pm.scale.setScalar(0.82); scene.add(pm); EX.pig.mesh = pm; EX.pig.U = pa.U; }
   const st = STATION_BY_NAME['Douzi City'] || STATIONS[0];
   exTeleport(st);
@@ -77,7 +77,7 @@ const _ep = { x: 0, z: 0 };
 export function exUpdate(dt) {
   autoTrain(dt);
   const I = EX.inp;
-  I.fx = clamp(I.kx + I.jx, -1, 1); I.fz = clamp(I.kz + I.jz, -1, 1);
+  I.fx = clamp(I.kx + I.jx, -1, 1); I.fz = clamp(I.kz + I.jz, -1, 1); I.brake = !!(I.kb || I.hb);
   if (EX.mode !== 'auto') {
     const P = EX.P, mag = Math.min(1, Math.hypot(I.fx, I.fz)), ride = EX.mode === 'porc';
     const run = I.run || P.run || Math.hypot(I.jx, I.jz) > 0.93;
@@ -95,34 +95,14 @@ export function exUpdate(dt) {
     if (ride) { g.x = P.x; g.z = P.z; }
     const gy = groundAt(P.x, P.z) + (ride ? 2.02 + 0.05 * Math.abs(Math.sin(g.ph)) * g.amp : 1.62);
     P.y = lerp(P.y, gy, 1 - Math.pow(0.0005, dt));
-  } else {
-    const c = EX.car;
-    const onRoad = (() => { const m = tmGet(c.x, c.z); return m === 4 || m === 6; })();
-    const thr = I.fz, vmax = onRoad ? 40 : 15;
-    if (I.brake) c.v -= Math.sign(c.v) * Math.min(Math.abs(c.v), 16 * dt);
-    else if (thr > 0.05) c.v += (c.v < 0 ? 14 : 6.5 * (1 - clamp(c.v / vmax, 0, 1) * 0.85)) * thr * dt;
-    else if (thr < -0.05) c.v += (c.v > 0.5 ? 13 : 4) * thr * dt;
-    c.v -= c.v * (onRoad ? 0.12 : 0.55) * dt + Math.sign(c.v) * Math.min(Math.abs(c.v), 0.35 * dt);
-    c.v = clamp(c.v, -8, vmax);
-    const steer = -I.fx; c.steer = lerp(c.steer, steer, 1 - Math.pow(0.001, dt));
-    c.yaw += steer * clamp(c.v / 6, -1, 1) * 1.55 / (1 + Math.abs(c.v) / 16) * dt;
-    const fx = Math.sin(c.yaw), fz = Math.cos(c.yaw);
-    _ep.x = c.x + fx * c.v * dt; _ep.z = c.z + fz * c.v * dt;
-    if (collide(_ep, 1.5)) c.v *= 0.35;
-    if (inWater(_ep.x, _ep.z)) c.v = 0; else { c.x = clamp(_ep.x, -WW / 2 + 20, WW / 2 - 20); c.z = clamp(_ep.z, -HH / 2 + 20, HH / 2 - 20); }
-    const hf = groundAt(c.x + fx * 1.4, c.z + fz * 1.4), hb = groundAt(c.x - fx * 1.4, c.z - fz * 1.4), hl = groundAt(c.x + fz * 0.85, c.z - fx * 0.85), hr = groundAt(c.x - fz * 0.85, c.z + fx * 0.85);
-    const k = 1 - Math.pow(0.0002, dt);
-    c.y = lerp(c.y, (hf + hb + hl + hr) / 4, k);
-    c.pitch = lerp(c.pitch, Math.atan2(hb - hf, 2.8), k); c.roll = lerp(c.roll, Math.atan2(hl - hr, 1.7), k);
-    EX.P.x = c.x; EX.P.z = c.z;
-    if (!EX.dragging && Math.abs(c.v) > 2) c.orbit *= Math.pow(0.12, dt);
-  }
+  } else { EX.P.x = EX.car.x; EX.P.z = EX.car.z; if (!EX.dragging && Math.abs(EX.car.v) > 2) EX.car.orbit *= Math.pow(0.12, dt); }
+  driveUpdate(dt, I, EX.mode === 'auto');   // la voiture garde son élan même quand on en est descendu
+  updateFlyers(dt);
   { const g = EX.pig; g.y = lerp(g.y || groundAt(g.x, g.z), groundAt(g.x, g.z), 1 - Math.pow(0.001, dt)); g.mesh.position.set(g.x, g.y, g.z); g.mesh.rotation.y = g.yaw; g.U.uPorc.value.set(g.ph, g.amp); }
   const c = EX.car;
-  c.mesh.position.set(c.x, c.y + 0.02, c.z); c.mesh.rotation.set(c.pitch, c.yaw, c.roll, 'YXZ');
   updateNpcs(dt);
   EX.hudT -= dt; if (EX.hudT <= 0) { EX.hudT = 0.25; exHud(false); }
-  EX.saveT -= dt; if (EX.saveT <= 0) { EX.saveT = 5; try { localStorage.setItem(EX_SAVE, JSON.stringify({ x: EX.P.x, z: EX.P.z, yaw: EX.P.yaw, cx: c.x, cz: c.z, cyaw: c.yaw })); } catch (e) { } }
+  EX.saveT -= dt; if (EX.saveT <= 0) { EX.saveT = 5; try { localStorage.setItem(EX_SAVE, JSON.stringify({ x: EX.P.x, z: EX.P.z, yaw: EX.P.yaw, cx: c.x, cz: c.z, cyaw: c.yaw, model: c.model })); } catch (e) { } }
 }
 export function exCamera(dt) {
   if (EX.mode === 'porc' && EX.view !== 'cockpit') {
@@ -136,26 +116,24 @@ export function exCamera(dt) {
     camera.rotation.set(P.pitch, P.yaw, 0, 'YXZ');
   } else if (EX.view === 'cockpit') {
     const c = EX.car; c.mesh.updateMatrixWorld(true);
-    camera.position.set(0.36, 1.26, -0.26).applyMatrix4(c.mesh.matrixWorld);
+    const e = OEIL[c.model]; camera.position.set(e[0], e[1], e[2]).applyMatrix4(c.chassis.matrixWorld);
     _eq.setFromEuler(_ee.set(c.lookP, Math.PI + c.lookY, 0, 'YXZ'));
     camera.quaternion.copy(c.mesh.quaternion).multiply(_eq);
+    if (DRIVE.shake > 0.01) camera.position.y += (Math.random() - 0.5) * DRIVE.shake * 0.08;
     if (!EX.dragging && Math.abs(c.v) > 1.5) { c.lookY *= Math.pow(0.25, dt); c.lookP *= Math.pow(0.25, dt); }
     const ud = c.cabin.userData; ud.wheel.rotation.z = -c.steer * 1.7; ud.needle.rotation.z = -(-135 + clamp(Math.abs(c.v) * 3.6, 0, 160) / 160 * 270) * Math.PI / 180;
-  } else {
-    const c = EX.car, a = c.yaw + c.orbit, d = 8.6, cp = Math.cos(c.orbitP);
-    let x = c.x - Math.sin(a) * d * cp, z = c.z - Math.cos(a) * d * cp, y = c.y + 1.4 + Math.sin(c.orbitP) * d;
-    y = Math.max(y, groundAt(x, z) + 0.7);
-    const k = 1 - Math.pow(0.00002, dt);
-    camera.position.set(lerp(camera.position.x, x, k), lerp(camera.position.y, y, k), lerp(camera.position.z, z, k));
-    camera.lookAt(c.x, c.y + 1.5, c.z);
-  }
+  } else driveCamera(dt);
 }
+// position des yeux du conducteur dans chaque modèle (conduite à gauche)
+const OEIL = { porkette: [0.3, 1.2, -0.3], berline: [0.36, 1.16, -0.3], fourgon: [0.4, 1.56, 0.62], bolide: [0.36, 1.0, -0.32] };
 const _eq = new THREE.Quaternion(), _ee = new THREE.Euler();
 export function exSetView() {
   const cockpit = EX.mode === 'auto' && EX.view === 'cockpit';
-  if (cockpit && !EX.car.cabin) { EX.car.cabin = makeCarInterior([123, 30, 46]); EX.car.mesh.add(EX.car.cabin); }
+  if (cockpit && !EX.car.cabin) { const e = OEIL[EX.car.model]; EX.car.cabin = makeCarInterior([123, 30, 46]); EX.car.cabin.position.set(e[0] - 0.36, e[1] - 1.26, e[2] + 0.26); EX.car.chassis.add(EX.car.cabin); }
+  if (EX.car.body) EX.car.body.visible = !cockpit;
   if (EX.car.cabin) EX.car.cabin.visible = cockpit;
   camera.near = cockpit ? 0.06 : 0.2; camera.fov = cockpit ? 74 : 68; camera.updateProjectionMatrix();
+  document.body.classList.toggle('driving', EX.mode === 'auto');
   const b = $('ex-view'); if (b) { b.style.display = EX.mode !== 'pied' ? '' : 'none'; b.textContent = EX.view === 'cockpit' ? 'Vue extérieure' : EX.mode === 'porc' ? 'Vue cavalier' : 'Vue habitacle'; }
 }
 export function exToggleView() { EX.view = EX.view === 'cockpit' ? 'ext' : 'cockpit'; EX.car.lookY = EX.car.lookP = 0; exSetView(); }
@@ -171,11 +149,11 @@ export function exToggleCar() {
   if (EX.mode === 'porc') return;
   const c = EX.car, P = EX.P;
   if (EX.mode === 'auto') {
-    if (Math.abs(c.v) > 3) { toast('Arrêtez-vous avant de descendre'); return; }
+    if (Math.hypot(c.vx, c.vz) > 3) { toast('Arrêtez-vous avant de descendre'); return; }
     const lx = Math.cos(c.yaw), lz = -Math.sin(c.yaw);
     _ep.x = c.x + lx * 2.2; _ep.z = c.z + lz * 2.2; collide(_ep, 0.45);
     EX.mode = 'pied'; exPlacePlayer(_ep.x, _ep.z, c.yaw + Math.PI); P.pitch = 0; c.v = 0;
-  } else if (Math.hypot(c.x - P.x, c.z - P.z) < 7) { EX.mode = 'auto'; c.orbit = 0; c.lookY = c.lookP = 0; }
+  } else if (Math.hypot(c.x - P.x, c.z - P.z) < 7) { EX.mode = 'auto'; c.orbit = 0; c.lookY = c.lookP = 0; c.camYaw = c.yaw; sfxInit(); }
   else {
     const fx = -Math.sin(P.yaw), fz = -Math.cos(P.yaw);
     _ep.x = P.x + fx * 6; _ep.z = P.z + fz * 6; collide(_ep, 1.6);
@@ -201,6 +179,13 @@ function exBuildHud() {
     #ex-br button.on { background: var(--bordeaux); color: var(--creme); }
     #ex-speed { font: 28px/1 var(--f-display); color: var(--creme); background: var(--bordeaux); padding: 10px 16px; border-radius: 10px; display: none; font-variant-numeric: tabular-nums; }
     #ex-speed small { font: 600 12px var(--f-body); margin-left: 4px; }
+    #ex-hits { font: 600 13px var(--f-body); color: var(--creme); background: var(--bordeaux-deep); padding: 5px 10px; border-radius: 8px; display: none; }
+    #ex-hb, #ex-model { display: none; }
+    body.driving #ex-hb { display: block; user-select: none; -webkit-user-select: none; }
+    body.driving #ex-model.ok { display: block; }
+    #ex-drift { position: fixed; left: 50%; top: 18%; transform: translateX(-50%) scale(.9); font: 26px/1 var(--f-display); color: var(--creme); background: var(--bordeaux); padding: 10px 18px 9px; border-radius: 10px; box-shadow: 0 5px 0 var(--bordeaux-deep); opacity: 0; transition: opacity .2s, transform .2s; z-index: 6; pointer-events: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    #ex-drift.on { opacity: 1; transform: translateX(-50%) scale(1); }
+    #ex-drift.hot { background: var(--or); color: var(--encre); }
     #ex-joy { position: fixed; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 3px solid rgba(243,231,201,.7); background: rgba(23,17,14,.25); display: none; z-index: 5; pointer-events: none; }
     #ex-joy i { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px; border-radius: 50%; background: rgba(243,231,201,.85); }
     #ex-help { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); font: 600 13px var(--f-body); color: rgba(255,248,232,.9); text-shadow: 0 1px 3px #000; display: none; z-index: 4; white-space: nowrap; }
@@ -211,14 +196,17 @@ function exBuildHud() {
   loc.innerHTML = '<div class="k" id="ex-k"></div><div class="n" id="ex-n"></div><div class="s" id="ex-s"></div>';
   $('hud-tl').prepend(loc);
   const br = document.createElement('div'); br.id = 'ex-br';
-  br.innerHTML = '<div id="ex-speed"><span id="ex-kmh">0</span><small>km/h</small></div><button id="ex-view">Vue extérieure</button><button id="ex-run">Courir</button><button id="ex-pig">Cochon</button><button id="ex-act">Voiture</button>';
+  br.innerHTML = '<div id="ex-hits"></div><div id="ex-speed"><span id="ex-kmh">0</span><small>km/h</small></div><button id="ex-hb">Frein à main</button><button id="ex-model">Changer de voiture</button><button id="ex-view">Vue extérieure</button><button id="ex-run">Courir</button><button id="ex-pig">Cochon</button><button id="ex-act">Voiture</button>';
   document.body.appendChild(br);
   const joy = document.createElement('div'); joy.id = 'ex-joy'; joy.innerHTML = '<i></i>'; document.body.appendChild(joy);
-  const help = document.createElement('div'); help.id = 'ex-help'; help.textContent = 'ZQSD / flèches : bouger · souris : regarder · Maj : courir · E : voiture · P : cochon · V : vue · Espace : frein · M : carte';
+  const help = document.createElement('div'); help.id = 'ex-help'; help.textContent = 'ZQSD / flèches : bouger · souris : regarder · Maj : courir · E : voiture · P : cochon · V : vue · Espace : frein à main · G : changer de voiture · H : klaxon · M : carte';
   document.body.appendChild(help);
   $('ex-act').onclick = e => { e.stopPropagation(); exToggleCar(); };
   $('ex-pig').onclick = e => { e.stopPropagation(); exTogglePig(); };
   $('ex-view').onclick = e => { e.stopPropagation(); exToggleView(); };
+  $('ex-model').onclick = e => { e.stopPropagation(); carNextModel(); exSetView(); };
+  { const hb = $('ex-hb'), set = v => e => { e.stopPropagation(); e.preventDefault(); EX.inp.hb = v; hb.classList.toggle('on', v); };
+    hb.addEventListener('pointerdown', set(true)); for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, set(false)); }
   $('ex-run').onclick = e => { e.stopPropagation(); EX.P.run = !EX.P.run; $('ex-run').classList.toggle('on', EX.P.run); };
 }
 function exNearestCity() { let best = null, bd = 1e9; for (const st of STATIONS) { const tw = st.town, cx = tw ? tw.C[0] : st.x, cz = tw ? tw.C[1] : st.z, d = Math.hypot(cx - EX.P.x, cz - EX.P.z); if (d < bd) { bd = d; best = st; } } return { st: best, d: bd }; }
@@ -240,7 +228,7 @@ function exHud(force) {
   $('ex-run').style.display = auto ? 'none' : '';
   { const ride = EX.mode === 'porc', np = Math.hypot(EX.pig.x - EX.P.x, EX.pig.z - EX.P.z) < 6; $('ex-pig').style.display = auto ? 'none' : ''; $('ex-pig').textContent = ride ? 'Descendre du cochon' : np ? 'Monter sur le cochon' : 'Appeler le cochon'; $('ex-act').style.display = ride ? 'none' : ''; $('ex-run').textContent = ride ? 'Galoper' : 'Courir'; }
   $('ex-speed').style.display = auto ? 'block' : 'none';
-  if (auto) $('ex-kmh').textContent = Math.round(Math.abs(EX.car.v) * 3.6);
+  if (auto) { $('ex-kmh').textContent = Math.round(Math.hypot(EX.car.vx, EX.car.vz) * 3.6); $('ex-model').classList.toggle('ok', Math.hypot(EX.car.vx, EX.car.vz) < 1); }
 }
 export function exMapInfo() {
   const el = $('map-info'), st = STATIONS[mapState.sel];
@@ -257,7 +245,7 @@ function exBindInput() {
     const I = EX.inp;
     I.kz = (K.z || K.w || K.ArrowUp ? 1 : 0) - (K.s || K.ArrowDown ? 1 : 0);
     I.kx = (K.d || K.ArrowRight ? 1 : 0) - (K.q || K.a || K.ArrowLeft ? 1 : 0);
-    I.run = !!K.Shift; I.brake = !!K[' '];
+    I.run = !!K.Shift; I.kb = !!K[' '];
   };
   window.addEventListener('keydown', e => {
     if (!game.started) return;
@@ -267,6 +255,8 @@ function exBindInput() {
     if (k === 'e' || k === 'Enter') exToggleCar();
     else if (k === 'v' || k === 'c') { if (EX.mode !== 'pied') exToggleView(); }
     else if (k === 'p' || k === 'f') exTogglePig();
+    else if (k === 'g') { if (EX.mode === 'auto' && Math.hypot(EX.car.vx, EX.car.vz) < 1) { carNextModel(); exSetView(); } }
+    else if (k === 'h') { sfxInit(); sfxHorn(); }
     else if (k === 'm') { $('map').classList.contains('open') ? closeMap() : (document.exitPointerLock && document.exitPointerLock(), openMap()); }
     else if (k === 'Escape') { closeMap(); $('menu').classList.remove('open'); }
     if (k === ' ' || k.startsWith('Arrow')) e.preventDefault();

@@ -37,6 +37,12 @@ for (const q of ['mobile', 'haute', 'ultra']) {
       const st = pe.STATION_BY_NAME['Nouvelle Groin']; const r = pe.ROADS[0].pts[pe.ROADS[0].pts.length >> 1];
       for (const [x, z] of [[st.town.C[0], st.town.C[1]], [r[0], r[2]], [st.town.C[0], st.town.C[1]]]) { pe.go(x, z, 0, 0); await pe.render(3); let n = 0; pe.scene.traverseVisible(o => { if (o.isInstancedMesh) n++; }); out.push(n); }
       return out; })()`);
+    // conduite : deux secondes pleins gaz en ville, puis frein à main braqué ; la voiture doit avancer sans erreur
+    const roule = await pg.evaluate(`(async () => { const pe = window.__pe, st = pe.STATION_BY_NAME['Nouvelle Groin'], T = st.town.T;
+      pe.go(st.town.C[0], st.town.C[1], Math.atan2(T.U[0], T.U[1]), 0, 'auto'); const c = pe.EX.car, x0 = c.x, z0 = c.z;
+      pe.EX.inp.kz = 1; await pe.render(40); pe.EX.inp.kx = 1; pe.EX.inp.kb = true; await pe.render(15); pe.EX.inp.kz = pe.EX.inp.kx = 0; pe.EX.inp.kb = false;
+      return Math.hypot(c.x - x0, c.z - z0); })()`);
+    if (!(roule > 5)) errors.push('[mobile] la voiture n\'avance pas : ' + roule);
     // panne injectée : deux images qui plantent ne doivent ni figer la boucle ni afficher l'écran d'erreur
     const survit = await pg.evaluate(`(async () => { const pe = window.__pe, o = pe.composer.render.bind(pe.composer); let k = 0;
       pe.composer.render = dt => { if (k++ < 2) throw new Error('panne injectée'); o(dt); }; await pe.render(5); pe.composer.render = o;

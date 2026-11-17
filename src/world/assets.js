@@ -1,6 +1,6 @@
 // Modèles du moteur Porkonia 3D : citoyen standard (citizen.h), cochon (porc4.h), voiture
 import * as THREE from 'three';
-import { czData, carData } from '../data.js';
+import { czData } from '../data.js';
 import { gunzip, hashStr } from '../engine/util.js';
 import { worldShading } from '../engine/lighting.js';
 import { Geo, M } from '../engine/geo.js';
@@ -35,8 +35,8 @@ function unpackMesh(buf, off, nv, nf, scale) {
   g.setIndex(new THREE.BufferAttribute(new Uint16Array(idx), 1)); g.computeBoundingSphere();
   return g;
 }
-const PORK_CZ = await czData, PORK_CAR = await carData;
-const CZD = await gunzip(PORK_CZ.geo), CARD = await gunzip(PORK_CAR.geo);
+const PORK_CZ = await czData;
+const CZD = await gunzip(PORK_CZ.geo);
 const CZ_HIP = PORK_CZ.meta.hipy;
 const CZ_SKINS = [[0.92, 0.37, 0.38], [0.95, 0.50, 0.50], [0.80, 0.30, 0.32], [0.42, 0.22, 0.15], [0.98, 0.62, 0.58], [0.92, 0.37, 0.38], [0.86, 0.42, 0.36]];
 const CZ_CLOTH = [[214, 40, 60], [250, 196, 40], [40, 120, 220], [60, 170, 90], [240, 120, 40], [150, 70, 190], [245, 240, 225], [30, 60, 120], [240, 120, 160], [90, 60, 40], [40, 170, 170], [123, 30, 46]];
@@ -99,37 +99,6 @@ export function makeCitizenPool(n) {
   pool.flush = () => { for (const e of pool.meshes) { e.m.instanceMatrix.needsUpdate = true; e.an.needsUpdate = true; } };
   return pool;
 }
-export function makeCarAssets() {
-  const PC = PORK_CAR, geo = unpackMesh(CARD, PC.lo.off, PC.lo.nv, PC.lo.nf, 4.0), geoHi = unpackMesh(CARD, PC.hi.off, PC.hi.nv, PC.hi.nf, 4.0);
-  const mat = new THREE.MeshPhysicalMaterial({ roughness: 0.35, metalness: 0.0, clearcoat: 0.45, clearcoatRoughness: 0.12, envMapIntensity: 0.7 });
-  worldShading(mat, {
-    key: 'car2', after: sh => {
-      sh.vertexShader = 'attribute vec3 aMisc; flat varying float vSlot; varying vec3 vLocC; varying vec3 vNoC;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vSlot = aMisc.x; vLocC = position; vNoC = normal;');
-      sh.fragmentShader = 'flat varying float vSlot; varying vec3 vLocC; varying vec3 vNoC; float carR = 0.3; float carM = 0.0; vec3 carE = vec3(0.0);\n' + sh.fragmentShader
-        .replace('#include <color_fragment>', `#include <color_fragment>
-        { int sl = int(vSlot + 0.5); vec3 p = vLocC; vec3 n = normalize(vNoC);
-          if (sl == 0) {
-            bool band = p.y > 1.0 && p.y < 1.43;
-            bool side = band && abs(n.x) > 0.5 && p.z < 0.42 && p.z > -0.98 && !(p.z > -0.34 && p.z < -0.25);
-            bool front = band && n.z > 0.3 && abs(p.x) < 0.60 && p.z > 0.3, back = band && n.z < -0.3 && abs(p.x) < 0.58 && p.z < -0.95;
-            if (side || front || back) { diffuseColor.rgb = vec3(0.05, 0.12, 0.2); carR = 0.3; carE = vec3(0.02, 0.05, 0.09); }
-            else if (abs(n.x) > 0.6 && p.y > 0.5 && p.y < 1.0 && (abs(p.z - 0.47) < 0.012 || abs(p.z + 0.30) < 0.012)) diffuseColor.rgb *= 0.35;
-          }
-          else if (sl == 2) { diffuseColor.rgb = vec3(0.02, 0.02, 0.022); carR = 0.85; }
-          else if (sl == 3) { diffuseColor.rgb = vec3(0.86, 0.86, 0.88); carM = 1.0; carR = 0.18; }
-          else if (sl == 4) { diffuseColor.rgb = vec3(1.0, 0.96, 0.8); carR = 0.1; carE = vec3(1.0, 0.9, 0.6) * (0.15 + 4.0 * smoothstep(0.02, 0.4, uLit)); }
-          else if (sl == 5) { diffuseColor.rgb = vec3(0.75, 0.05, 0.04); carR = 0.15; carE = vec3(1.0, 0.08, 0.04) * (0.1 + 2.0 * smoothstep(0.02, 0.4, uLit)); }
-          else if (sl == 6) { diffuseColor.rgb = vec3(0.03, 0.03, 0.035); carR = 0.6; } }`)
-        .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = carR;')
-        .replace('#include <metalnessmap_fragment>', 'float metalnessFactor = carM;')
-        .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n totalEmissiveRadiance += carE;');
-    },
-  });
-  mat.customProgramCacheKey = () => 'car2';
-  return { geo, geoHi, mat };
-}
-
-// habitacle : vu seulement depuis le siège du conducteur
 export function makeCarInterior(bodyCol) {
   const K = new Kit(), grp = new THREE.Group();
   const DASH = [58, 52, 54], TRIM = [224, 208, 176], SEAT = [150, 40, 50], DARK = [26, 24, 26];

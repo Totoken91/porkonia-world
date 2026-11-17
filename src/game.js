@@ -875,6 +875,8 @@ async function boot(hotData) {
     return best;
   };
   window.claude?.hot?.snapshot?.(() => saveObj());
+  // mesure des performances sur l'appareil : module chargé seulement si l'adresse finit par ?mesure
+  if (new URLSearchParams(location.search).has('mesure')) import('./mesure.js');
   requestAnimationFrame(frame);
   exInit(); console.log('farcull', registerFarCull());
   $('b-start').onclick = () => {

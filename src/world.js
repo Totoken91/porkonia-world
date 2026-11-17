@@ -1,5 +1,7 @@
-// Assemblage du décor dans l'ordre (le générateur aléatoire est partagé : ne pas réordonner)
-import { mulberry, STATIONS, setStatus, tick, scene } from './core.js';
+// Assemblage du décor. Chaque ville et chaque phase a son propre générateur aléatoire (seeds.js).
+// L'ordre compte encore là où une phase lit ce qu'une autre a posé (terrains réservés, rues, arbres des villes).
+import { STATIONS, setStatus, tick, scene } from './core.js';
+import { rngMonuments, rngVille, rngPhase } from './seeds.js';
 import { SPOTS, PARKED } from './registry.js';
 import { sceneryMaterials, scenery, BUILDINGS, STREETS } from './scenery.js';
 import { propDefs, propsCountry, buildProps, buildParked } from './props.js';
@@ -13,27 +15,25 @@ import { buildRoads } from './roads.js';
 export async function buildScenery() {
   sceneryMaterials();
   propDefs();
-  const rnd = mulberry(1212);
   for (const st of STATIONS) buildStation(st);
-  for (const st of STATIONS) for (const k of st.meta.lm) landmark(k, st, rnd);
-  for (const st of STATIONS) layoutTown2(st, rnd);
+  for (const st of STATIONS) { const rnd = rngMonuments(st.name); for (const k of st.meta.lm) landmark(k, st, rnd); }
+  for (const st of STATIONS) layoutTown2(st, rngVille(st.name));
   setStatus('Tracé des routes…'); await tick();
   const nRoads = buildRoads();
-  placeFarms2(rnd);
-  propsCountry(rnd);
+  placeFarms2(rngPhase('fermes'));
+  propsCountry(rngPhase('campagne'));
   const nProps = buildProps();
   buildTown3();
   setStatus('Plantation des forêts…'); await tick();
   buildCitizens();
-  buildHerds(rnd);
-  const nTrees = buildVegetation(rnd);
-  buildHay(rnd);
+  buildHerds(rngPhase('troupeaux'));
+  const nTrees = buildVegetation(rngPhase('forets'));
+  buildHay(rngPhase('foin'));
   buildGoblins();
   setStatus("Pousse de l'herbe…"); await tick();
-  // herbe en brins retirée (sol travaillé dans le shader du terrain)
   buildSmoke();
-  buildBirds(rnd);
-  buildCars(rnd);
+  buildBirds(rngPhase('oiseaux'));
+  buildCars();
   buildParked();
   scene.add(scenery);
   return { nTrees, nBuildings: BUILDINGS.length, streets: STREETS.length, roads: nRoads, props: nProps, spots: SPOTS.length, parked: PARKED.length };

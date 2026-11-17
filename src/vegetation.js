@@ -1,6 +1,6 @@
 // Végétation : atlas, essences, forêts, bottes de foin
 import * as THREE from 'three';
-import { mulberry, worldShading, noiseAt, TEX, WW, HH, Q, idxAt, CLS, LAKE, hAt, tmGet, slopeAt, clsAt, hashStr, waterAt, freeAfterUpload, H, STATIONS, HTEX, NX, NZ, scene } from './core.js';
+import { mulberry, worldShading, noiseAt, TEX, WW, HH, Q, idxAt, CLS, LAKE, hAt, tmGet, slopeAt, clsAt, hashStr, waterAt, freeAfterUpload, STATIONS } from './core.js';
 import { PROPS, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
 import { TRACKS } from './tracks.js';
 import { linCol, Geo, M, TOWN_TREES, Mset, scenery } from './scenery.js';
@@ -356,7 +356,6 @@ export function buildVegetation(rnd) {
   };
   const dens = Q.trees;
   const STEP = 13;
-  const tint = (base, v) => [base[0] * v[0], base[1] * v[1], base[2] * v[2]];
   const greens = [[1, 1, 1], [0.86, 0.95, 0.8], [1.12, 1.05, 0.85], [0.9, 1.0, 1.05], [1.2, 1.1, 0.7]];
   const autumn = [[1.9, 1.05, 0.45], [2.1, 0.75, 0.35], [1.6, 1.25, 0.4]];
   let count = 0;
@@ -441,88 +440,6 @@ export function updateVegetation(camPos) {
 }
 
 // ---------- herbe dense calculée sur le GPU autour de la caméra
-const GRASS = { mesh: null, mat: null, cell: 1 };
-function buildGrass() {
-  // masque d'herbe (25 m) : R densité, G sécheresse
-  const MW = Math.ceil(WW / 25), MH = Math.ceil(HH / 25);
-  const data = new Uint8Array(MW * MH * 4);
-  for (let j = 0; j < MH; j++) for (let i = 0; i < MW; i++) {
-    const x = (i + 0.5) * 25 - WW / 2, z = (j + 0.5) * 25 - HH / 2;
-    const k = idxAt(x, z), c = CLS[k], h = H[k];
-    let d = c === 1 ? 1 : c === 3 ? 0.75 : c === 2 ? 0.5 : 0;
-    if (LAKE[k] || h < 2.6 || h > 650) d = 0;
-    const m = tmGet(x, z); if (m === 1 || m === 2 || m === 4) d *= 0.15; if (m === 3) d *= 0.6;
-    if (slopeAt(x, z) > 0.55) d *= 0.3;
-    for (const st of STATIONS) { const dd = Math.hypot(x - st.x, z - st.z), R = [0, 200, 290, 380, 480, 820][st.meta.size]; if (dd < R) d *= 0.35 + 0.65 * dd / R; }
-    data[(j * MW + i) * 4] = d * 255; data[(j * MW + i) * 4 + 1] = (c === 3 ? 0.7 : 0.15) * 255;
-  }
-  const mask = new THREE.DataTexture(data, MW, MH, THREE.RGBAFormat); mask.magFilter = mask.minFilter = THREE.LinearFilter; mask.needsUpdate = true;
-  // touffe de 4 brins
-  const pos = [], uvs = [];
-  for (let b = 0; b < 4; b++) {
-    const a = b * 0.8 + 0.3, ox = Math.cos(a * 2.1) * 0.12, oz = Math.sin(a * 2.1) * 0.12, ca = Math.cos(a), sa = Math.sin(a), w = 0.065;
-    const P = (u, y) => [ox + ca * u * w * (1 - y * 0.85), y, oz + sa * u * w * (1 - y * 0.85)];
-    const v = [P(-1, 0), P(1, 0), P(-1, 0.5), P(1, 0.5), P(0, 1)];
-    for (const tri of [[0, 1, 3], [0, 3, 2], [2, 3, 4]]) for (const q of tri) { pos.push(...v[q]); uvs.push(q === 4 ? 0.5 : (q % 2), v[q][1]); }
-  }
-  const geo = new THREE.InstancedBufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.Float32BufferAttribute(pos.map((_, i) => i % 3 === 1 ? 1 : 0), 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  const R = Q.grassR, count = Q.grass;
-  const m = Math.ceil(Math.sqrt(count * 4 / Math.PI));
-  const cell = 2 * R / m;
-  const offs = [];
-  for (let j = 0; j < m; j++) for (let i = 0; i < m; i++) { const ox = i - m / 2, oz = j - m / 2; if ((ox * ox + oz * oz) * cell * cell <= R * R) offs.push(ox, oz); }
-  geo.setAttribute('aOff', new THREE.InstancedBufferAttribute(new Float32Array(offs), 2));
-  geo.instanceCount = offs.length / 2;
-  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e7);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, side: THREE.DoubleSide, envMapIntensity: 0.6 });
-  const U = { tHG: { value: HTEX }, uHSG: { value: new THREE.Vector2(NX, NZ) }, tMask: { value: mask }, uCamCell: { value: new THREE.Vector2() }, uCell: { value: cell }, uRad: { value: R } };
-  worldShading(mat, {
-    key: 'grass', after: sh => {
-      Object.assign(sh.uniforms, U);
-      sh.vertexShader = `uniform vec2 uWorld; uniform float uTime; attribute vec2 aOff; uniform sampler2D tHG, tMask; uniform vec2 uHSG, uCamCell; uniform float uCell, uRad; varying vec3 vGcol; varying float vGy;
-        float g21(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-        float gH(vec2 xz){ vec2 g = (xz / uWorld + 0.5) * (uHSG - 1.0); g = clamp(g, vec2(0.0), uHSG - 1.001); ivec2 i = ivec2(floor(g)); vec2 f = fract(g);
-          float a = texelFetch(tHG, i, 0).r, b = texelFetch(tHG, i + ivec2(1, 0), 0).r, c = texelFetch(tHG, i + ivec2(0, 1), 0).r, d = texelFetch(tHG, i + ivec2(1, 1), 0).r;
-          return f.y >= f.x ? a + (d - c) * f.x + (c - a) * f.y : a + (b - a) * f.x + (d - b) * f.y; }\n` + sh.vertexShader
-        .replace('#include <beginnormal_vertex>', 'vec3 objectNormal = vec3(0.0, 1.0, 0.0);')
-        .replace('#include <begin_vertex>', `
-          vec2 cid = uCamCell + aOff;
-          vec2 base = (cid + vec2(g21(cid), g21(cid + 7.31))) * uCell;
-          vec4 mk = texture2D(tMask, base / uWorld + 0.5);
-          float r = length(base - cameraPosition.xz);
-          float hs = g21(cid * 1.37 + 2.0);
-          float keep = step(hs, mk.r) * smoothstep(uRad, uRad * 0.72, r);
-          float bh = (0.35 + g21(cid + 5.0) * 0.65) * keep * (0.55 + mk.r * 0.6);
-          float ang = g21(cid + 3.1) * 6.2831;
-          vec3 p = position; p.y *= bh; p.xz *= keep * (0.9 + bh);
-          float ca = cos(ang), sa = sin(ang); p.xz = mat2(ca, -sa, sa, ca) * p.xz;
-          float wind = sin(uTime * 1.7 + base.x * 0.07 + base.y * 0.05) * 0.5 + sin(uTime * 3.0 + base.x * 0.13 + base.y * 0.11) * 0.22;
-          float yy = position.y;
-          p.x += yy * yy * (0.16 + wind * 0.22) * bh; p.z += yy * yy * wind * 0.12 * bh;
-          vec3 transformed = vec3(base.x + p.x, gH(base) + p.y, base.y + p.z);
-          float hue = g21(cid + 11.0);
-          vec3 gc = mix(vec3(0.16, 0.34, 0.06), vec3(0.3, 0.42, 0.1), hue);
-          gc = mix(gc, vec3(0.48, 0.44, 0.16), mk.g * 0.8);
-          float fl = g21(cid + 9.0);
-          if (fl < 0.025 && yy > 0.9) gc = fl < 0.008 ? vec3(0.95, 0.85, 0.15) : fl < 0.016 ? vec3(0.95, 0.95, 0.92) : vec3(0.55, 0.3, 0.75);
-          vGcol = gc; vGy = yy;`);
-      sh.fragmentShader = 'varying vec3 vGcol; varying float vGy;\n' + sh.fragmentShader.replace('#include <color_fragment>', 'diffuseColor.rgb = vGcol * mix(0.35, 1.15, vGy);');
-    },
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.frustumCulled = false; mesh.receiveShadow = true; mesh.castShadow = false;
-  mesh.layers.set(1);
-  GRASS.mesh = mesh; GRASS.mat = mat; GRASS.cell = cell; GRASS.U = U;
-  scene.add(mesh);
-}
-function updateGrass(camPos) {
-  if (!GRASS.mesh) return;
-  GRASS.U.uCamCell.value.set(Math.floor(camPos.x / GRASS.cell), Math.floor(camPos.z / GRASS.cell));
-}
-
 // ---------- bottes de foin
 export function buildHay(rnd) {
   const items = [];

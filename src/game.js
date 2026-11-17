@@ -13,6 +13,7 @@ import { train, cam, rebuildConsist, updateTrainPose, headPos, locate, LOCO_LEN,
 import { toast, mapState, closeMap, openMap } from './ui.js';
 import { EX, exMapInfo, exUpdate, exCamera, exStart, exTeleport, exToggleCar, NPC, updateNpcs, exSetView, exPlacePlayer, exToggleView, exTogglePig, exPlaceCar, exInit } from './explore.js';
 import { buildScenery } from './world.js';
+import { worldSignature } from './signature.js';
 
 let pixelRatio = Math.min(window.devicePixelRatio || 1, Q.pr);
 
@@ -317,7 +318,6 @@ function loadOffer(id) {
   // les voyageurs montent
   if (o.good === 'voyageurs') {
     let n = Math.min(10, Math.round(o.units / 6));
-    const head = headPos(new THREE.Vector3());
     for (const c of citizens.list) if (c.st === st.id && c.visible && !c.walk && n-- > 0) {
       const l = locate(LOCO_LEN + (slot + 0.5) * (WAGON_LEN + GAP)); const p = l.t.pos(l.s, new THREE.Vector3());
       c.walk = { x0: c.x, z0: c.z, tx: p.x + (c.x - p.x) * 0.25, tz: p.z + (c.z - p.z) * 0.25, t: 0, dur: 1.6 + Math.random() * 1.4 };
@@ -669,7 +669,6 @@ function checkStops() {
   if (game.stoppedAt >= 0) {
     if (train.v > 1.5) {
       // départ
-      const st = STATIONS[game.stoppedAt];
       game.stoppedAt = -1; closeStation();
       if (!game.routeManual) autoRoute();
       else if (game.route && game.route.states[0] && game.route.states[0].how === 'flip') setRoute(game.route.target, true);
@@ -690,7 +689,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { save(); if (audio.ctx) audio.ctx.suspend().catch(() => { }); }
   else if (audio.ctx && game.started) audio.ctx.resume().catch(() => { });
 });
-let clockPrev = performance.now(), titleT = 0;
+let clockPrev = performance.now();
 const perf = { acc: 0, frames: 0, t: 0, low: 0, high: 0 };
 const _focus = new THREE.Vector3(), _fwd = new THREE.Vector3(), _sunScreen = new THREE.Vector3(), _camPos = new THREE.Vector3();
 let sunVisSmooth = 0;
@@ -703,7 +702,7 @@ function sunVisibility(camPos) {
     if (hAt(x, z) > camPos.y + t * tanE) return 0;
   }
   if (cam.mode === 'cabine') { // les montants de la cabine cachent un peu le soleil
-    const sx = _sunScreen.x, sy = _sunScreen.y; if (sy > 0.62 || sy < -0.55) return 0.25;
+    const sy = _sunScreen.y; if (sy > 0.62 || sy < -0.55) return 0.25;
   }
   return 1;
 }
@@ -739,7 +738,7 @@ function frame(now) {
   if (PAUSE.on) { PAUSE.once--; if (PAUSE.once === 0 && PAUSE.cb) { const cb = PAUSE.cb; PAUSE.cb = null; setTimeout(cb, 0); } }
   const rdt = Math.min(0.05, (now - clockPrev) / 1000); clockPrev = now;
   clock.simT += rdt;
-  if (EX.on) { if (game.started) exUpdate(rdt); else titleT += rdt; }
+  if (EX.on) { if (game.started) exUpdate(rdt); }
   else if (game.started) {
     const paused = game.panelOpen || $('map').classList.contains('open') || $('menu').classList.contains('open');
     for (let k = 0; k < game.ff; k++) {
@@ -752,8 +751,6 @@ function frame(now) {
     train.bump = Math.max(0, train.bump - rdt * 6);
     updateHud();
     audio.update(rdt * game.ff);
-  } else {
-    titleT += rdt;
   }
   updateTrainPose();
   if (EX.on && game.started) exCamera(rdt); else updateCamera(rdt, clock.simT);
@@ -850,7 +847,7 @@ async function boot(hotData) {
   $('title-sub').textContent = had ? `Reprise du service à ${startSt.name} · ${fmtMoney(game.money)} Pork$ en caisse` : 'Exploration libre · 31 villes · à pied, en voiture';
   console.log('boot', Math.round(performance.now() - T0), 'fin'); console.log('Porkonia Express prêt', JSON.stringify(info));
   window.__pe = { train, game, cam, setCamMode, setNotch, STATIONS, TRACKS, physicsStep, updateTrainPose, openMap, closeMap, setRoute, placeTrainAt, rebuildConsist, closeStation, PILLARS, PORTALS, camera, scene, hAt, LANDMARK_SPOTS, BUILDINGS, renderer, checkStops, loadOffer, stationOffset, nextOptions, upcomingLimit, STOP_MARK, offersFor, applyRouteSwitches, flipTrain, applyTime, Q, VEG, composer, waterAt, THREE, PART_MESHES, DRAPES, scenery, EX, exStart, exTeleport, exToggleCar, groundAt, ROADS, NPC, updateNpcs, STATION_BY_NAME, exUpdate, exCamera };
-  window.__pe.PROPS = PROPS; window.__pe.LAZY = LAZY; window.__pe.view = (type, k, dist, h, ang = 0.6) => { const a = PROPS.where[type]; const p = a[Math.min(a.length - 1, k)]; const x = p[0] + Math.sin(ang) * dist, z = p[1] + Math.cos(ang) * dist; EX.mode = 'pied'; exSetView(); exPlacePlayer(x, z, ang); EX.P.y = groundAt(x, z) + h; EX.P.pitch = -Math.atan2(h - 1.5, dist) * 0.9; for (let q = 0; q < 90; q++) updateNpcs(0.05); return type + ' ' + a.length; };
+  window.__pe.PROPS = PROPS; window.__pe.LAZY = LAZY; window.__pe.info = info; window.__pe.worldSignature = worldSignature; window.__pe.view = (type, k, dist, h, ang = 0.6) => { const a = PROPS.where[type]; const p = a[Math.min(a.length - 1, k)]; const x = p[0] + Math.sin(ang) * dist, z = p[1] + Math.cos(ang) * dist; EX.mode = 'pied'; exSetView(); exPlacePlayer(x, z, ang); EX.P.y = groundAt(x, z) + h; EX.P.pitch = -Math.atan2(h - 1.5, dist) * 0.9; for (let q = 0; q < 90; q++) updateNpcs(0.05); return type + ' ' + a.length; };
   window.__pe.exToggleView = exToggleView; window.__pe.exTogglePig = exTogglePig; window.__pe.exSetView = exSetView;
   window.__pe.go = (x, z, yaw, pitch = 0, mode = 'pied') => { EX.mode = mode; exSetView(); if (mode === 'auto') { exPlaceCar(x, z, yaw); EX.car.orbit = 0; camera.position.set(x - Math.sin(yaw) * 7, groundAt(x, z) + 3.5, z - Math.cos(yaw) * 7); } else { exPlacePlayer(x, z, yaw); EX.P.pitch = pitch; } EX.P.x = x; EX.P.z = z; };
   window.__pe.render = (n = 1) => new Promise(r => { PAUSE.once = n; PAUSE.cb = r; });

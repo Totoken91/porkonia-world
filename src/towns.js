@@ -32,7 +32,6 @@ function yawFor(dx, dz) { return Math.atan2(-dz, dx); }
 
 function addBuilding(o) {
   // o: x,z,lo,hi,w,d,theta,floors,style,wall,roofType,roofCol,roofH,shop,attL,attR,sideWin,seed,shut,door
-  const S = STYLE[o.style];
   const floorY = (o.hi - o.lo) + 1.1;           // niveau du rez-de-chaussée au-dessus de la base
   const gh = o.style === 4 || o.shop ? 3.9 : o.style === 2 ? 4.2 : 3.0, fh = o.style === 4 ? 3.2 : o.style === 2 ? 3.6 : 2.85;
   const wallFloors = o.roofType === 2 ? o.floors - 1 : o.floors;

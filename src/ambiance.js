@@ -1,6 +1,6 @@
 // Ambiance : gobelins, fumées, oiseaux, circulation
 import * as THREE from 'three';
-import { hAt, SUN_DIR, SUN_COL, NOISE, scene, STATIONS, lerp } from './core.js';
+import { hAt, SUN_DIR, SUN_COL, NOISE, scene, STATIONS } from './core.js';
 import { SMOKERS, CARS } from './registry.js';
 import { GOBLIN_SPOTS } from './tracks.js';
 import { Kit, M, scenery, Mset } from './scenery.js';
@@ -94,22 +94,4 @@ export function updateBirds(t) {
   }
   mesh.instanceMatrix.needsUpdate = true;
 }
-export function buildCars(rnd) { const a = makeCarAssets(); CARS.geo = a.geo; CARS.geoHi = a.geoHi; CARS.mat = a.mat; }
-function updateCars(dt, camPos) {
-  const { mesh, list } = CARS; if (!mesh) return;
-  list.forEach((c, i) => {
-    const p = c.r.pts, n = p.length - 1;
-    const near = Math.abs(p[0][0] - camPos.x) < 2500 && Math.abs(p[0][1] - camPos.z) < 2500;
-    if (!near && c.placed) return;
-    c.placed = true;
-    c.t += c.dir * c.v * dt;
-    if (c.t > n) { c.t = n; c.dir = -1; } else if (c.t < 0) { c.t = 0; c.dir = 1; }
-    const k = Math.min(n - 1, Math.floor(c.t)), f = c.t - k;
-    const a = p[k], b = p[k + 1];
-    const dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1;
-    const nx = -dz / l * c.lane * c.dir, nz = dx / l * c.lane * c.dir;
-    const x = lerp(a[0], b[0], f) + nx, z = lerp(a[1], b[1], f) + nz;
-    mesh.setMatrixAt(i, Mset(_cm, x, hAt(x, z) + 0.12, z, 1, 1, 1, Math.atan2(dx * c.dir, dz * c.dir)));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-}
+export function buildCars() { const a = makeCarAssets(); CARS.geo = a.geo; CARS.geoHi = a.geoHi; CARS.mat = a.mat; }

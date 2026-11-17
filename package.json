@@ -2,10 +2,26 @@
   "name": "porkonia-world",
   "version": "0.9.0",
   "private": true,
+  "type": "module",
   "description": "Porkonia grandeur nature : simulation 3D du pays de Porkonia (three.js)",
-  "scripts": {
-    "build": "python3 tools/assemble.py",
-    "serve": "python3 -m http.server 8080 --directory dist"
+  "engines": {
+    "node": ">=20.19"
   },
-  "dependencies": { "three": "^0.160.0" }
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview --host",
+    "shot": "node tools/shot.mjs",
+    "lint": "eslint .",
+    "check": "vite build && node tools/check.mjs",
+    "test": "npm run lint && npm run check"
+  },
+  "dependencies": {
+    "three": "0.160.0"
+  },
+  "devDependencies": {
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "vite": "^8.3.8"
+  }
 }

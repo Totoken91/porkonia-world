@@ -54,5 +54,5 @@ meta = {'variants': out, 'hipy': hipy, 'porc': porc}
 heads = []
 for o in out:
     b = io.BytesIO(); Image.open(o['head']).save(b, 'PNG', optimize=True); heads.append('data:image/png;base64,' + base64.b64encode(b.getvalue()).decode()); o.pop('head')
-js = 'window.PORK_CZ = ' + json.dumps({'meta': meta, 'geo': base64.b64encode(gzip.compress(bytes(blob), 9)).decode(), 'heads': heads}) + ';\n'
+js = 'export default ' + json.dumps({'meta': meta, 'geo': base64.b64encode(gzip.compress(bytes(blob), 9)).decode(), 'heads': heads}) + ';\n'
 open(ROOT + '/data/cz.js', 'w').write(js); print('cz.js', len(js) // 1024, 'KB', 'heads', sum(len(h) for h in heads) // 1024)

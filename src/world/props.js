@@ -1,29 +1,33 @@
-// ============================================================================
-//  Partie D3 : le décor de détail — mobilier urbain, commerces, industrie, campagne
-// ============================================================================
-const PROP_CHUNK = 260;
-const PROPS = { map: new Map(), meshes: [], defs: {}, n: 0, where: {} };
-const SPOTS = [];          // emplacements d'habitants à l'arrêt : {x, z, yaw}
-const PROP_COLL = [];      // gros objets infranchissables : {x, z, r}
+// Décor de détail : mobilier urbain, commerces, industrie, campagne
+import * as THREE from 'three';
+import { clamp, hashStr } from '../engine/util.js';
+import { Q } from '../engine/quality.js';
+import { hAt, tmGet, waterAt, clsAt, slopeAt, STATIONS, WW, HH } from './land.js';
+import { freeAfterUpload } from '../engine/renderer.js';
+import { noiseAt } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { lazyRankStart, lazyRank, lazyShow, lazyFar } from '../engine/lazy.js';
+import { Geo, M } from '../engine/geo.js';
+import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, groundAt, knockAdd } from './registry.js';
+import { carMaterial, carGeo, MODELE_IDS, CAR_COLORS } from './cars.js';
+import { scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
+
+      // gros objets infranchissables : {x, z, r}
 const TINTS = [[226, 44, 56], [250, 200, 40], [44, 120, 226], [56, 176, 96], [246, 130, 44], [156, 80, 200], [244, 130, 170], [60, 190, 200], [250, 246, 235], [123, 30, 46]];
 const tintOf = rnd => TINTS[(rnd() * TINTS.length) | 0];
-function propAdd(type, x, y, z, yaw = 0, s = 1, tint = null) {
-  const k = type + ':' + Math.floor(x / PROP_CHUNK) + ':' + Math.floor(z / PROP_CHUNK);
-  let L = PROPS.map.get(k); if (!L) PROPS.map.set(k, L = { type, list: [] });
-  L.list.push([x, y, z, yaw, s, tint]); PROPS.n++; (PROPS.where[type] || (PROPS.where[type] = [])).push([x, z]);
-}
 const propG = (x, z, dy = 0.12) => hAt(x, z) + dy;
-const yawTo = (dx, dz) => Math.atan2(dx, dz);
+export const yawTo = (dx, dz) => Math.atan2(dx, dz);
 function spot(x, z, yaw) { SPOTS.push({ x, z, yaw }); }
 
 // ---------- modèles (repère : posé sur y = 0, face vers +z ; dernier argument de teinte = zone coloriable)
-function propDefs() {
+export function propDefs() {
   const D = PROPS.defs;
-  const def = (name, R, cast, fn) => { const g = new Geo(); const o = {
+  // la géométrie d'un modèle n'est fabriquée qu'à la première tuile qui l'affiche
+  const def = (name, R, cast, fn) => { let geo = null; D[name] = { R, cast, get geo() { if (!geo) { const g = new Geo(); const o = {
     b: (x, y, z, sx, sy, sz, col, ry = 0, lf = 0) => (g.add('box', M(x, y, z, sx, sy, sz, ry), col, null, lf), o),
     c: (x, y, z, d, h, col, lf = 0, tpl = 'cyl') => (g.add(tpl, M(x, y, z, d, h, d), col, null, lf), o),
     m: (tpl, mat, col, lf = 0) => (g.add(tpl, mat, col, null, lf), o),
-  }; fn(o); D[name] = { geo: g.geometry(), R, cast }; };
+  }; fn(o); geo = g.geometry(); } return geo; } }; };
   const WOOD = [150, 104, 62], WOOD2 = [116, 78, 46], IRON = [44, 48, 46], STONE = [206, 198, 184], WHITE = [246, 242, 232], GREEN = [40, 110, 62], LEAF = [72, 150, 60], STEEL = [196, 202, 210], COPPER = [214, 128, 70], BRICK = [176, 84, 60], CONC = [198, 194, 186], SOIL = [96, 66, 44], GOLD = [232, 190, 80];
   def('banc', 150, false, o => { for (let k = 0; k < 3; k++) o.b(0, 0.46, -0.12 + k * 0.15, 1.7, 0.05, 0.12, WOOD); for (let k = 0; k < 2; k++) o.b(0, 0.72 + k * 0.17, -0.26, 1.7, 0.12, 0.05, WOOD); for (const x of [-0.7, 0.7]) o.b(x, 0.23, 0, 0.07, 0.46, 0.44, IRON).b(x, 0.62, -0.27, 0.07, 0.5, 0.06, IRON); });
   def('poubelle', 110, false, o => o.c(0, 0.45, 0, 0.5, 0.9, GREEN, 0, 'cyl').c(0, 0.93, 0, 0.56, 0.08, [30, 80, 46]).c(0, 0.6, 0, 0.52, 0.06, GOLD));
@@ -96,25 +100,44 @@ function propsMaterial() {
   m.customProgramCacheKey = () => 'props';
   return m;
 }
-function buildProps() {
-  const mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
+// rayon (m) et masse relative du mobilier que la voiture peut renverser ; rayon des objets qui l'arrêtent
+const RENVERSABLE = { banc: [0.9, 0.5], poubelle: [0.4, 0.15], jardiniere: [0.7, 0.4], bouche: [0.3, 0.3], boite: [0.35, 0.3], feu: [0.3, 0.4], stop: [0.25, 0.15], fleche: [0.25, 0.15],
+  terrasse: [1.4, 0.5], ardoise: [0.4, 0.1], enseigne: [0.3, 0.2], caisses: [0.7, 0.2], tonneaux: [0.9, 0.5], futs: [0.8, 0.5], etal: [1.5, 0.5], table_pique: [1.1, 0.5], linge: [1.2, 0.1],
+  cloture: [1.2, 0.15], epouvantail: [0.4, 0.1], delineateur: [0.15, 0.05], poteau: [0.25, 0.6], panneau_pub: [0.5, 0.5], potager: [1.2, 0.2] };
+const SOLIDE = { kiosque: 2.0, abribus: 1.8, cabine: 0.7, silos: 4.5, cuves: 3.6, alambic: 2.2, cheminee: 2.2, hangar: 8, conteneurs: 3.5, grue: 2.5, chateau_eau: 3.5, serre: 4.5, tracteur: 1.8 };
+export function buildProps() {
+  const mat = PROPS.mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
+  lazyRankStart();
   for (const [, L] of PROPS.map) {
     const d = PROPS.defs[L.type]; if (!d) continue;
-    const im = new THREE.InstancedMesh(d.geo, mat, L.list.length);
-    L.list.forEach((p, i) => { im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[4], p[4], p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
-    im.computeBoundingSphere(); im.castShadow = d.cast; im.receiveShadow = true; im.visible = false;
+    const list = L.list;
+    const make = () => {
+    const im = new THREE.InstancedMesh(d.geo, mat, list.length);
+    list.forEach((p, i) => { const sc = p[6] ? 0 : p[4]; im.setMatrixAt(i, M(p[0], p[1], p[2], sc, sc, sc, p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
+    im.computeBoundingSphere(); im.castShadow = d.cast; im.receiveShadow = true;
     freeAfterUpload(null, [im.instanceMatrix, im.instanceColor]);
-    grp.add(im);
-    PROPS.meshes.push({ mesh: im, cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 });
+    return im;
+    };
+    const tile = { mesh: null, make, parent: grp, rank: lazyRank(), cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 };
+    PROPS.meshes.push(tile);
+    // conduite : le petit mobilier se renverse (p[6] marque l'objet parti), les gros objets arrêtent la voiture
+    const leger = RENVERSABLE[L.type], gros = SOLIDE[L.type];
+    if (leger) for (const p of list) knockAdd({ x: p[0], z: p[2], r: leger[0] * p[4], masse: leger[1], kind: 'prop', type: L.type, p, tile });
+    else if (gros) for (const p of list) PROP_COLL.push({ x: p[0], z: p[2], r: gros * p[4] });
   }
   PROPS.map.clear();
   scenery.add(grp);
   return PROPS.n;
 }
-function updateProps(camPos) { for (const p of PROPS.meshes) p.mesh.visible = Math.hypot(p.cx - camPos.x, p.cz - camPos.z) < p.R; }
+export function updateProps(camPos) {
+  for (const p of PROPS.meshes) {
+    const d = Math.hypot(p.cx - camPos.x, p.cz - camPos.z);
+    if (p.make) lazyShow(p, d < p.R, d > lazyFar(p.R)); else p.mesh.visible = d < p.R;
+  }
+}
 
 // ---------- placement : trottoirs
-function propsSidewalk(o) {
+export function propsSidewalk(o) {
   const { W, T, horiz, c, s0, s1, hw, sw, sg, main, core, mont, rnd, size } = o;
   const Wl = (t, lat) => horiz ? W(t, c + lat) : W(c + lat, t);
   const n = horiz ? T.V : T.U, u = horiz ? T.U : T.V;
@@ -136,9 +159,8 @@ function propsSidewalk(o) {
   // voitures garées le long des grandes rues
   if (main && size >= 2) for (let t = s0 + 10; t < s1 - 9; t += 6.2) if (rnd() < 0.32) { const [x, z] = Wl(t, sg * (hw - 1.15)); PARKED.push({ x, z, yaw: along + (sg > 0 ? 0 : Math.PI) }); }
 }
-const PARKED = [];
 // ---------- commerces : enseigne, terrasse, ardoise, caisses
-function propsShop(b, rnd, core) {
+export function propsShop(b, rnd, core) {
   const fp = [0, 0, 0, 0];
   facadePoint(b, 0, (rnd() - 0.5) * (b.w - 2.4), b.floorY + b.gh - 0.75, fp);
   propAdd('enseigne', fp[0], fp[1], fp[2], fp[3], 1, tintOf(rnd));
@@ -149,7 +171,7 @@ function propsShop(b, rnd, core) {
   if (rnd() < 0.35) { const [x, z] = at(-(b.w / 2 - 1.2), 0.75); propAdd(rnd() < 0.5 ? 'caisses' : rnd() < 0.5 ? 'tonneaux' : 'futs', x, propG(x, z, 0.2), z, fp[3]); }
 }
 // ---------- place du marché
-function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
+export function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
   const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2, r = Math.min(a1 - a0, b1 - b0) / 2;
   const dirW = (da, db) => [T.U[0] * da + T.V[0] * db, T.U[1] * da + T.V[1] * db];
   const N = 9;
@@ -164,7 +186,7 @@ function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
   for (const [ta, tb] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) { const [x, z] = Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb); propAdd('parterre', x, propG(x, z), z, 0, 1.3, tintOf(rnd)); }
   for (let k = 0; k < 3; k++) { const a = rnd() * 6.28, rr = r * (0.25 + rnd() * 0.2), [x, z] = Wd(ca + Math.cos(a) * rr, cb + Math.sin(a) * rr), y = rnd() * 6.28; spot(x, z, y); spot(x + Math.sin(y) * 1.1, z + Math.cos(y) * 1.1, y + Math.PI); }
 }
-function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
+export function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
   const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2;
   const dirW = (da, db) => [T.U[0] * da + T.V[0] * db, T.U[1] * da + T.V[1] * db];
   { const [x, z] = Wd(ca, cb); propAdd('kiosque_musique', x, propG(x, z), z, 0); PROP_COLL.push({ x, z, r: 4.6 }); }
@@ -174,7 +196,7 @@ function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
   for (const [ta, tb] of [[0.78, 0.25], [0.76, 0.8]]) { const [x, z] = Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb); propAdd('table_pique', x, propG(x, z), z, rnd() * 6); if (rnd() < 0.7) spot(x + 1.3, z, -Math.PI / 2); }
 }
 // ---------- jardin d'un pavillon
-function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
+export function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
   const put = (type, u, v, yaw, s = 1, tint = null) => { const [px, pz] = at(u, v); propAdd(type, px, propG(px, pz), pz, yaw, s, tint); return [px, pz]; };
   put('boite', Math.max(x + 0.8, dx0 - 0.7), 0.95, yawIn + Math.PI);
   if (dx1 - dx0 > 2.4 && rnd() < 0.55) { const [px, pz] = at((dx0 + dx1) / 2, set + d * 0.3); PARKED.push({ x: px, z: pz, yaw: yawIn + (rnd() < 0.5 ? 0 : Math.PI) }); }
@@ -188,7 +210,7 @@ function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
   }
 }
 // ---------- zone d'activité, selon la spécialité de la ville
-function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
+export function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
   const sp = (st.meta.spec || '').toLowerCase();
   const kind = /brass|bière|malt|houblon|brasser/.test(sp) ? 'brew' : /fum|jambon|saucis|charcut|salais|rôti|grill|côtes|conserv/.test(sp) ? 'smoke' : /céréal|élevage|aliment|coopérat|pépini/.test(sp) ? 'grain' : /maritime|pêche|cabotage|plaisance|douane|port|sel|fret/.test(sp) ? 'port' : 'divers';
   const P = (ta, tb) => Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb);
@@ -205,7 +227,7 @@ function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
   for (let k = 0; k < 4; k++) { const [x, z] = P(0.2 + rnd() * 0.6, 0.45 + rnd() * 0.12); spot(x, z, rnd() * 6.28); }
 }
 // ---------- le long des routes
-function propsRoad(rows, A, B, rnd, ri) {
+export function propsRoad(rows, A, B, rnd, ri) {
   const n = rows.length;
   for (let k = 6; k < n - 6; k++) {
     const r = rows[k];
@@ -232,7 +254,7 @@ function propsRoad(rows, A, B, rnd, ri) {
   }
 }
 // ---------- campagne, fermes, côtes, ciel
-function propsCountry(rnd) {
+export function propsCountry(rnd) {
   for (const f of FARMS) {
     const c = Math.cos(f.rot), s = Math.sin(f.rot), at = (u, v) => [f.x + c * u - s * v, f.z + s * u + c * v];
     { const [x, z] = at(34, -8); propAdd('siloferme', x, propG(x, z, 0), z, 0, 1, tintOf(rnd)); PROP_COLL.push({ x, z, r: 2.2 }); }
@@ -280,16 +302,28 @@ function propsCountry(rnd) {
   // montgolfières
   for (let k = 0; k < 9; k++) { const x = (rnd() - 0.5) * WW * 0.8, z = (rnd() - 0.5) * HH * 0.8; propAdd('montgolfiere', x, Math.max(hAt(x, z), 0) + 150 + rnd() * 220, z, rnd() * 6, 1, tintOf(rnd)); }
 }
-function buildParked() {
+export function buildParked() {
   if (!PARKED.length) return;
-  const cols = [[226, 36, 48], [36, 110, 230], [250, 246, 235], [250, 200, 30], [50, 180, 110], [250, 130, 40], [240, 130, 170], [70, 200, 210], [150, 80, 200], [60, 60, 70]];
   const by = new Map();
   for (const p of PARKED) { const k = Math.floor(p.x / 200) + ':' + Math.floor(p.z / 200); let a = by.get(k); if (!a) by.set(k, a = []); a.push(p); }
-  const col = new THREE.Color();
+  const col = new THREE.Color(), mat = carMaterial();
+  // modèle et couleur tirés de la position : stables d'une partie à l'autre
+  const PARTS = [0, 0, 0, 1, 1, 1, 1, 2, 2, 3];
+  lazyRankStart();
   for (const [, a] of by) {
-    const im = new THREE.InstancedMesh(CARS.geo, CARS.mat, a.length);
-    a.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.1, p.z, 1, 1, 1, p.yaw)); const c = cols[(hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)) >>> 2) % cols.length]; im.setColorAt(i, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); PROP_COLL.push({ x: p.x, z: p.z, r: 1.5 }); });
-    im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; scenery.add(im);
-    PROPS.meshes.push({ mesh: im, cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 });
+    for (const p of a) { const h = hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)); p.model = MODELE_IDS[PARTS[(h >>> 9) % PARTS.length]]; p.col = CAR_COLORS[(h >>> 2) % CAR_COLORS.length]; }
+    const make = () => {
+      const grp = new THREE.Group();
+      for (const id of MODELE_IDS) {
+        const l = a.filter(p => p.model === id && !p.gone); if (!l.length) continue;
+        const im = new THREE.InstancedMesh(carGeo(id).fixe, mat, l.length);
+        l.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.03, p.z, 1, 1, 1, p.yaw)); im.setColorAt(i, col.setRGB(p.col[0] / 255, p.col[1] / 255, p.col[2] / 255, THREE.SRGBColorSpace)); });
+        im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; grp.add(im);
+      }
+      return grp;
+    };
+    const tile = { mesh: null, make, parent: scenery, rank: lazyRank(), cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 };
+    PROPS.meshes.push(tile);
+    for (const p of a) knockAdd({ x: p.x, z: p.z, r: 1.5, masse: 3, kind: 'parked', p, tile });
   }
 }

@@ -1,9 +1,15 @@
-// ============================================================================
-//  Partie B : réseau SCPB — voies, aiguillages, viaducs, tunnels, poteaux
-// ============================================================================
-const FIX = 240;
-const STOP_MARK = 130;
-const PLATFORM_HALF = 150;
+// Réseau SCPB : voies, aiguillages, viaducs, tunnels, poteaux
+import * as THREE from 'three';
+import { clamp, lerp, b64, hashStr } from '../engine/util.js';
+import { PW, STATIONS, hAt, waterAt, tmGet, tmMark } from './land.js';
+import { scene } from '../engine/renderer.js';
+import { TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { PROPS } from './registry.js';
+
+export const FIX = 240;
+export const STOP_MARK = 130;
+export const PLATFORM_HALF = 150;
 
 class Track {
   constructor(id, a, b, sa, sb, pts) {
@@ -55,15 +61,15 @@ function straightPts(x0, z0, x1, z1, y) {
   for (let k = 0; k < n; k++) { const t = k / (n - 1); pts.push([lerp(x0, x1, t), y, lerp(z0, z1, t)]); }
   return pts;
 }
-const TRACKS = [];
+export const TRACKS = [];
 for (const e of PW.edges) {
   const xs = b64(e.x, Int32Array), zs = b64(e.z, Int32Array), ys = b64(e.y, Int32Array);
   const pts = []; for (let k = 0; k < xs.length; k++) pts.push([xs[k] / 4, ys[k] / 20, zs[k] / 4]);
   TRACKS.push(new Track(TRACKS.length, e.a, e.b, e.sa, e.sb, pts));
 }
-const DEPART = STATIONS.map(() => ({ '1': [], '-1': [] }));
+export const DEPART = STATIONS.map(() => ({ '1': [], '-1': [] }));
 for (const t of TRACKS) { DEPART[t.a][t.sa].push({ t, d: 1 }); DEPART[t.b][t.sb].push({ t, d: -1 }); }
-const STUBS = [];
+export const STUBS = [];
 for (const st of STATIONS) for (const side of [1, -1]) {
   if (DEPART[st.id][side].length) continue;
   const dx = st.dir.x * side, dz = st.dir.y * side;
@@ -131,13 +137,13 @@ function trackMaterials() {
   };
 }
 const COL = { talus: lin(250, 250, 250), herbe: lin(250, 250, 250), pierre: lin(255, 246, 232), deck: lin(210, 204, 196), railTop: lin(230, 230, 236), railSide: lin(120, 92, 74), tunnel: lin(150, 140, 130) };
-const PILLARS = [], PORTALS = [], GOBLIN_SPOTS = [], POLES = [], TUNNEL_LAMPS = [];
+export const PILLARS = [], PORTALS = [], GOBLIN_SPOTS = [], POLES = [], TUNNEL_LAMPS = [];
 
 const PROF = {
   viaduc: [[-1.9, 0], [-2.5, 0], [-2.5, 1.0], [-2.85, 1.0], [-2.85, -1.9], [2.85, -1.9], [2.85, 1.0], [2.5, 1.0], [2.5, 0], [1.9, 0]],
   tunnel: (() => { const a = [[3.45, -0.6]]; for (let k = 0; k <= 14; k++) { const th = k / 14 * Math.PI; a.push([3.4 * Math.cos(th), -0.3 + 6.6 * Math.sin(th)]); } a.push([-3.45, -0.6]); return a; })(),
 };
-function sampleFrames(track, s0, s1, step) {
+export function sampleFrames(track, s0, s1, step) {
   const out = [], p = new THREE.Vector3(), t = new THREE.Vector3();
   const n = Math.max(1, Math.round((s1 - s0) / step));
   for (let k = 0; k <= n; k++) {
@@ -219,7 +225,7 @@ function buildTrackGeometry(track, s0, s1, B, opts = {}) {
     }
   }
 }
-function markTrackMask() {
+export function markTrackMask() {
   const p = new THREE.Vector3();
   for (const t of [...TRACKS, ...STUBS]) for (let s = 0; s <= t.L; s += 6) { t.pos(s, p); tmMark(p.x, p.z, 9, 1); }
   for (const st of STATIONS) {
@@ -232,7 +238,7 @@ function flushStrips(B, group) {
   const add = m => { if (m) group.add(m); };
   add(B.ballast.mesh(MAT.ballast)); add(B.skirt.mesh(MAT.skirt)); add(B.rail.mesh(MAT.rail)); add(B.stone.mesh(MAT.stone, true)); add(B.tunnel.mesh(MAT.tunnel));
 }
-function buildNetwork() {
+export function buildNetwork() {
   trackMaterials();
   const group = new THREE.Group();
   for (const t of [...TRACKS, ...STUBS]) {
@@ -309,8 +315,8 @@ function mergeGeos(list) {
 }
 
 // ---------- traverses 3D autour de la caméra (le long du trajet du train)
-const SLEEPERS = { mesh: null, n: 1400, spacing: 0.62 };
-function buildSleepers() {
+export const SLEEPERS = { mesh: null, n: 1400, spacing: 0.62 };
+export function buildSleepers() {
   const g = new THREE.BoxGeometry(2.5, 0.2, 0.26); g.translate(0, 0.05, 0);
   const m = new THREE.InstancedMesh(g, MAT.sleeper, SLEEPERS.n);
   m.castShadow = false; m.receiveShadow = true; m.frustumCulled = false;

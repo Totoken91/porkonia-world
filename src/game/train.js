@@ -1,9 +1,20 @@
-// ============================================================================
-//  Partie D : le train (modèles PBR, chemin, physique) et les caméras
-// ============================================================================
-const LOCO_LEN = 17, WAGON_LEN = 18, GAP = 0.9;
+// Le train (modèles, chemin, pose) et ses caméras
+import * as THREE from 'three';
+import { clamp, lerp } from '../engine/util.js';
+import { hAt, tmGet } from '../world/land.js';
+import { camera, scene } from '../engine/renderer.js';
+import { TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { M, Mset } from '../engine/geo.js';
+import { game, input } from './state.js';
+import { DEPART, STOP_MARK, SLEEPERS } from '../world/tracks.js';
+import { PRODUITS } from '../world/cities.js';
+import { SMAT, Kit, signMesh } from '../world/scenery.js';
+import { makePigGeometry } from '../world/assets.js';
+
+export const LOCO_LEN = 17, WAGON_LEN = 18, GAP = 0.9;
 const TC = { bord: [128, 22, 40], creme: [243, 231, 201], gris: [70, 72, 80], noir: [26, 26, 30], acier: [190, 192, 198], bois: [150, 100, 62], rose: [244, 162, 178], jaune: [240, 196, 40] };
-function trainMaterials() {
+export function trainMaterials() {
   SMAT.carro = worldShading(new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.3, metalness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, envMapIntensity: 1.1 }), { key: 'carro' });
   SMAT.tmetal = worldShading(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.5, metalness: 0.75, envMapIntensity: 0.9 }), { key: 'tmetal' });
   SMAT.chrome = worldShading(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.14, metalness: 1, envMapIntensity: 1.4 }), { key: 'chrome' });
@@ -35,7 +46,7 @@ function buffers(K, zEnd) {
   for (const x of [-0.88, 0.88]) { K.on('tmetal').add('cyl', M(x, 1.25, zEnd - s * 0.1, 0.26, 0.5, 0.26, 0, Math.PI / 2), [50, 50, 54]); K.on('chrome').add('cyl24', M(x, 1.25, zEnd + s * 0.18, 0.48, 0.06, 0.48, 0, Math.PI / 2), [200, 200, 206]); }
   K.on('tmetal').box(0, 1.2, zEnd, 0.3, 0.3, 0.5, [40, 40, 44]);
 }
-function buildLoco() {
+export function buildLoco() {
   const K = new Kit(), grp = new THREE.Group();
   const body = extrudeZ(roundedSection(2.96, 2.9, 0.42, 1.38), 13.6, 0.05);
   K.on('carro').add(body, M(0, 0, -0.1, 1, 1, 1), TC.bord);
@@ -186,7 +197,7 @@ function speedDialTexture() {
   g.font = '18px Bungee, sans-serif'; g.fillStyle = '#7b1e2e'; g.fillText('km/h', 128, 178);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-function buildCab() {
+export function buildCab() {
   const K = new Kit(), grp = new THREE.Group();
   const D = [40, 42, 46], F = [96, 22, 36], P = [196, 192, 180];
   K.on('rubber').box(0, 2.02, 7.25, 2.9, 0.8, 1.5, D);
@@ -221,7 +232,7 @@ function buildCab() {
 }
 
 // ---------- le train
-const train = {
+export const train = {
   group: new THREE.Group(), loco: null, cab: null, wagons: [],
   cur: null, hist: [], v: 0, notch: 0, vmax: 140 / 3.6, power: 2.4e6, f0: 290e3,
   comfort: 100, odo: 0, switchSel: {}, bump: 0,
@@ -231,7 +242,7 @@ function wagonVisual(contract) {
   const p = PRODUITS[contract.good];
   return { type: p.wagon, tint: p.tint || (contract.good === 'saindoux' ? [238, 232, 210] : contract.good === 'sauce' ? [150, 54, 34] : contract.good === 'vin' ? [110, 40, 46] : contract.good === 'moutarde' ? [230, 190, 50] : null) };
 }
-function rebuildConsist(slots) {
+export function rebuildConsist(slots) {
   for (const w of train.wagons) {
     train.group.remove(w.grp);
     w.grp.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.map && o.material.map.isCanvasTexture && !Object.values(SMAT).includes(o.material)) { o.material.map.dispose(); o.material.dispose(); } });
@@ -239,14 +250,14 @@ function rebuildConsist(slots) {
   train.wagons = slots.map(c => { const vis = wagonVisual(c); const grp = buildWagon(vis.type, vis.tint); train.group.add(grp); return { grp, contract: c }; });
 }
 function trainLength() { return LOCO_LEN + train.wagons.length * (WAGON_LEN + GAP); }
-function placeTrainAt(stId, side) {
+export function placeTrainAt(stId, side) {
   const o = DEPART[stId][side][0];
   train.cur = { t: o.t, d: o.d, s: o.d > 0 ? STOP_MARK : o.t.L - STOP_MARK };
   const back = DEPART[stId][-side][0];
   train.hist = [{ t: back.t, d: -back.d }];
   train.v = 0; train.notch = 0;
 }
-function locate(dist) {
+export function locate(dist) {
   let { t, d, s } = train.cur;
   const avail = d > 0 ? s : t.L - s;
   if (dist <= avail) return { t, s: s - d * dist, d };
@@ -259,14 +270,14 @@ function locate(dist) {
   const h = train.hist[0] || train.cur;
   return { t: h.t, s: h.d > 0 ? 0 : h.t.L, d: h.d };
 }
-function nextOptions() {
+export function nextOptions() {
   const { t, d } = train.cur;
   if (t.stub && d > 0) return { st: -1, opts: [] };
   const st = d > 0 ? t.b : t.a, arr = d > 0 ? t.sb : t.sa;
   return { st, opts: DEPART[st][-arr] };
 }
-function chosenNext(st, opts) { if (!opts.length) return null; const k = train.switchSel[st]; return opts[clamp(k ?? 0, 0, opts.length - 1)]; }
-function advanceHead(ds) {
+export function chosenNext(st, opts) { if (!opts.length) return null; const k = train.switchSel[st]; return opts[clamp(k ?? 0, 0, opts.length - 1)]; }
+export function advanceHead(ds) {
   const c = train.cur;
   c.s += c.d * ds;
   let guard = 0;
@@ -284,7 +295,7 @@ function advanceHead(ds) {
   for (let i = train.hist.length - 1; i >= 0; i--) { if (tot > trainLength() + 400) { train.hist.splice(0, i + 1); break; } tot += train.hist[i].t.L; }
   return null;
 }
-function flipTrain() {
+export function flipTrain() {
   const Ltr = trainLength();
   const rear = locate(Ltr);
   const segs = [{ t: train.cur.t, d: train.cur.d }];
@@ -310,7 +321,7 @@ function lookAhead(dist, cb) {
     t = nx.t; d = nx.d; s = d > 0 ? 0 : t.L;
   }
 }
-function upcomingLimit(range) {
+export function upcomingLimit(range) {
   let best = { v: 1e9, at: 0 };
   lookAhead(range, (t, d, s0, s1, acc) => {
     const step = 10 * Math.sign(s1 - s0 || 1);
@@ -322,7 +333,7 @@ function upcomingLimit(range) {
   });
   return best;
 }
-function stationOffset() {
+export function stationOffset() {
   const { t, d, s } = train.cur;
   const fromStart = d > 0 ? s : t.L - s, toEnd = t.L - fromStart;
   const startSt = d > 0 ? t.a : t.b, endSt = d > 0 ? t.b : t.a;
@@ -338,18 +349,18 @@ function placeVehicle(obj, dFront, len) {
   _tg.copy(obj.position).add(_p1).sub(_p2);
   obj.lookAt(_tg);
 }
-function updateTrainPose() {
+export function updateTrainPose() {
   placeVehicle(train.loco, 0, LOCO_LEN);
   let d = LOCO_LEN + GAP;
   for (const w of train.wagons) { placeVehicle(w.grp, d, WAGON_LEN); d += WAGON_LEN + GAP; }
 }
-function headPos(out) { const c = train.cur; return c.t.pos(c.s, out); }
-function headDir(out) { const c = train.cur; c.t.tan(c.s, out); return out.multiplyScalar(c.d); }
+export function headPos(out) { const c = train.cur; return c.t.pos(c.s, out); }
+export function headDir(out) { const c = train.cur; c.t.tan(c.s, out); return out.multiplyScalar(c.d); }
 function locateWorld(dist, out) { const l = locate(dist); return l.t.pos(l.s, out); }
 
 // traverses 3D le long du trajet (de 150 m derrière à 700 m devant la tête)
 const _sm = new THREE.Matrix4(), _sp = new THREE.Vector3(), _st = new THREE.Vector3();
-function updateSleepers() {
+export function updateSleepers() {
   const S = SLEEPERS; if (!S.mesh) return;
   let i = 0;
   const sp = S.spacing;
@@ -369,10 +380,10 @@ function updateSleepers() {
 }
 
 // ---------- caméras
-const cam = { mode: 'cabine', yaw: 0, pitch: -0.04, idle: 0, orbitYaw: 2.6, orbitPitch: 0.28, orbitDist: 48, cine: null, cineT: 0, rig: new THREE.Object3D() };
-const CAM_MODES = ['cabine', 'poursuite', 'bord', 'drone'];
-const CAM_LABELS = { cabine: 'Cabine', poursuite: 'Poursuite', bord: 'Bord de voie', drone: 'Drone' };
-function setCamMode(m) {
+export const cam = { mode: 'cabine', yaw: 0, pitch: -0.04, idle: 0, orbitYaw: 2.6, orbitPitch: 0.28, orbitDist: 48, cine: null, cineT: 0, rig: new THREE.Object3D() };
+export const CAM_MODES = ['cabine', 'poursuite', 'bord', 'drone'];
+export const CAM_LABELS = { cabine: 'Cabine', poursuite: 'Poursuite', bord: 'Bord de voie', drone: 'Drone' };
+export function setCamMode(m) {
   cam.mode = m;
   const inCab = m === 'cabine';
   train.cab.visible = inCab;
@@ -384,7 +395,7 @@ function setCamMode(m) {
   cam.cine = null;
 }
 const _c1 = new THREE.Vector3(), _c2 = new THREE.Vector3(), _c3 = new THREE.Vector3();
-function updateCamera(dt, t) {
+export function updateCamera(dt, t) {
   if (cam.mode === 'libre') return;
   if (cam.mode === 'cabine') {
     cam.idle += dt;
@@ -443,4 +454,13 @@ function updateCamera(dt, t) {
   cam.cine.passed = (head.x - cam.cine.pos.x) * dirv.x + (head.z - cam.cine.pos.z) * dirv.z;
   _c2.set(lerp(center.x, head.x, 0.5), lerp(center.y, head.y, 0.5) + 2.5, lerp(center.z, head.z, 0.5));
   camera.lookAt(_c2);
+}
+
+// ---------- démarrage
+export function fitFov() {
+  const base = cam.mode === 'cabine' ? 68 : 58;
+  const minH = cam.mode === 'cabine' ? 54 : 48; // champ horizontal minimal (portrait)
+  const need = 2 * Math.atan(Math.tan(minH * Math.PI / 360) / camera.aspect) * 180 / Math.PI;
+  camera.fov = Math.min(Math.max(base, need), 92);
+  camera.updateProjectionMatrix();
 }

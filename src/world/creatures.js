@@ -1,7 +1,9 @@
 // Citoyens des quais et troupeaux
 import * as THREE from 'three';
-import { STATIONS, hashStr, clamp, lerp, hAt } from './core.js';
-import { Geo, M, scenery, Mset, freeSpot, FARMS, reserve } from './scenery.js';
+import { hashStr, clamp, lerp } from '../engine/util.js';
+import { STATIONS, hAt } from './land.js';
+import { Geo, M, Mset } from '../engine/geo.js';
+import { scenery, freeSpot, FARMS, reserve } from './scenery.js';
 import { creatureMat, makePorc } from './assets.js';
 import { PLATFORM_SLOTS } from './landmarks.js';
 

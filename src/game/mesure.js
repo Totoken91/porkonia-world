@@ -1,5 +1,5 @@
 // Mesure des performances sur l'appareil réel : ouvrir le jeu avec ?mesure à la fin de l'adresse.
-// Chargé à la demande par game.js, ce module ne pèse rien en jeu normal. Il téléporte le joueur à Douzi City,
+// Chargé à la demande par boot.js, ce module ne pèse rien en jeu normal. Il téléporte le joueur à Douzi City,
 // à Nouvelle Groin puis sur une route de campagne, et relève images par seconde, appels de dessin et triangles.
 const pe = window.__pe;
 const $ = id => document.getElementById(id);

@@ -1,5 +1,6 @@
 // Routes entre villes et collisions
-import { clamp, STATIONS, NX, NZ, WW, HH, hAt, waterAt, slopeAt, tmGet, mulberry, lerp, tmMark } from './core.js';
+import { clamp, mulberry, lerp } from '../engine/util.js';
+import { STATIONS, NX, NZ, WW, HH, hAt, waterAt, slopeAt, tmGet, tmMark } from './land.js';
 import { surfStamp, groundAt, ROADS, PROP_COLL } from './registry.js';
 import { TRACKS, STUBS, sampleFrames, PLATFORM_HALF } from './tracks.js';
 import { Drape, DRAPES, terrainN, BUILDINGS, LANDMARK_SPOTS, FOUNTAINS } from './scenery.js';

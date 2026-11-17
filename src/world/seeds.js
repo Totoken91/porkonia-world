@@ -5,7 +5,8 @@
 // point exact où l'ancien générateur unique en était quand elle commençait (nombre de tirages déjà consommés).
 // Ces nombres sont figés ci-dessous : ne pas les recalculer. Une phase ou une ville nouvelle n'a pas d'entrée et
 // reçoit une graine tirée de son nom.
-import { mulberry, hashStr, QKEY } from './core.js';
+import { mulberry, hashStr } from '../engine/util.js';
+import { QKEY } from '../engine/quality.js';
 
 const GRAINE_V9 = 1212, PAS = 0x6D2B79F5;
 const apres = n => mulberry((GRAINE_V9 + Math.imul(n, PAS)) | 0);

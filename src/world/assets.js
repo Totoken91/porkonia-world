@@ -1,8 +1,10 @@
 // Modèles du moteur Porkonia 3D : citoyen standard (citizen.h), cochon (porc4.h), voiture
 import * as THREE from 'three';
-import { czData, carData } from './data.js';
-import { worldShading, gunzip, hashStr } from './core.js';
-import { Geo, M, Kit } from './scenery.js';
+import { czData, carData } from '../data.js';
+import { gunzip, hashStr } from '../engine/util.js';
+import { worldShading } from '../engine/lighting.js';
+import { Geo, M } from '../engine/geo.js';
+import { Kit } from './scenery.js';
 
 // ---------- cochons
 export function makePigGeometry(gold) {

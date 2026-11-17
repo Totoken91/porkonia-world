@@ -1,9 +1,13 @@
-// Ambiance : gobelins, fumées, oiseaux, circulation
+// Ambiance : gobelins, fumées, oiseaux, modèle des voitures
 import * as THREE from 'three';
-import { hAt, SUN_DIR, SUN_COL, NOISE, scene, STATIONS } from './core.js';
+import { hAt, STATIONS } from './land.js';
+import { scene } from '../engine/renderer.js';
+import { NOISE } from '../engine/textures.js';
+import { SUN_DIR, SUN_COL } from '../engine/lighting.js';
+import { M, Mset } from '../engine/geo.js';
 import { SMOKERS, CARS } from './registry.js';
 import { GOBLIN_SPOTS } from './tracks.js';
-import { Kit, M, scenery, Mset } from './scenery.js';
+import { Kit, scenery } from './scenery.js';
 import { makeCarAssets } from './assets.js';
 import { _cm } from './creatures.js';
 

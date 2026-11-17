@@ -1,6 +1,10 @@
 // Réseau SCPB : voies, aiguillages, viaducs, tunnels, poteaux
 import * as THREE from 'three';
-import { clamp, lerp, PW, b64, STATIONS, TEX, worldShading, hAt, waterAt, tmGet, hashStr, tmMark, scene } from './core.js';
+import { clamp, lerp, b64, hashStr } from '../engine/util.js';
+import { PW, STATIONS, hAt, waterAt, tmGet, tmMark } from './land.js';
+import { scene } from '../engine/renderer.js';
+import { TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
 import { PROPS } from './registry.js';
 
 export const FIX = 240;

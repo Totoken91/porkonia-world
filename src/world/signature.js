@@ -1,9 +1,9 @@
 // Empreinte du monde généré : une somme de contrôle par famille d'objets (bâtiments, accessoires, arbres…).
 // `npm run check` la compare à tools/world-signature.json : toute modification involontaire du décor se voit
 // en vingt secondes, sans rendre une seule image. Après un changement voulu : `npm run check -- --update`.
-import { STATIONS } from './core.js';
-import { PROPS, SPOTS, PARKED, ROADS, TOWN_SEGS } from './registry.js';
-import { BUILDINGS, STREETS, FARMS, TOWN_TREES, LAMPS, HEDGES, GWALLS, FOUNTAINS, LANDMARK_SPOTS } from './scenery.js';
+import { STATIONS } from './land.js';
+import { PROPS, TOWN_SEGS, ROADS, PARKED, SPOTS } from './registry.js';
+import { BUILDINGS, STREETS, FARMS, LANDMARK_SPOTS, FOUNTAINS, LAMPS, HEDGES, GWALLS, TOWN_TREES } from './scenery.js';
 
 function fnv(h, s) { for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h; }
 // nombres arrondis au dixième de millimètre ; objets parcourus par clés triées ; objets three.js ignorés

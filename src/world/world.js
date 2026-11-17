@@ -1,6 +1,8 @@
 // Assemblage du décor. Chaque ville et chaque phase a son propre générateur aléatoire (seeds.js).
 // L'ordre compte encore là où une phase lit ce qu'une autre a posé (terrains réservés, rues, arbres des villes).
-import { STATIONS, setStatus, tick, scene } from './core.js';
+import { setStatus, tick } from '../engine/util.js';
+import { STATIONS } from './land.js';
+import { scene } from '../engine/renderer.js';
 import { rngMonuments, rngVille, rngPhase } from './seeds.js';
 import { SPOTS, PARKED } from './registry.js';
 import { sceneryMaterials, scenery, BUILDINGS, STREETS } from './scenery.js';

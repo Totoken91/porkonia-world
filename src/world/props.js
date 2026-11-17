@@ -1,8 +1,15 @@
 // Décor de détail : mobilier urbain, commerces, industrie, campagne
 import * as THREE from 'three';
-import { hAt, worldShading, freeAfterUpload, Q, tmGet, waterAt, noiseAt, clsAt, slopeAt, STATIONS, clamp, WW, HH, hashStr } from './core.js';
-import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
-import { Geo, M, scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
+import { clamp, hashStr } from '../engine/util.js';
+import { Q } from '../engine/quality.js';
+import { hAt, tmGet, waterAt, clsAt, slopeAt, STATIONS, WW, HH } from './land.js';
+import { freeAfterUpload } from '../engine/renderer.js';
+import { noiseAt } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { lazyRankStart, lazyRank, lazyShow, lazyFar } from '../engine/lazy.js';
+import { Geo, M } from '../engine/geo.js';
+import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt } from './registry.js';
+import { scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
 
       // gros objets infranchissables : {x, z, r}
 const TINTS = [[226, 44, 56], [250, 200, 40], [44, 120, 226], [56, 176, 96], [246, 130, 44], [156, 80, 200], [244, 130, 170], [60, 190, 200], [250, 246, 235], [123, 30, 46]];

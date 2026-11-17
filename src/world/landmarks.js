@@ -1,9 +1,11 @@
 // Monuments et gares
 import * as THREE from 'three';
-import { waterAt, hashStr } from './core.js';
+import { hashStr } from '../engine/util.js';
+import { waterAt } from './land.js';
+import { M } from '../engine/geo.js';
 import { ANIMATED, SMOKERS } from './registry.js';
 import { PLATFORM_HALF, STOP_MARK, FIX, DEPART } from './tracks.js';
-import { Kit, freeSpot, M, SMAT, signMesh, scenery, reserve, LANDMARK_SPOTS } from './scenery.js';
+import { Kit, freeSpot, SMAT, signMesh, scenery, reserve, LANDMARK_SPOTS } from './scenery.js';
 import { makePigGeometry } from './assets.js';
 
 export function landmark(kind, st, rnd) {

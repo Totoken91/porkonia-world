@@ -1,5 +1,5 @@
 // Interface partagée : messages et ouverture de la carte
-import { $ } from './core.js';
+import { $ } from '../engine/util.js';
 
 // ---------- interface
 export function toast(html, kind = '') {

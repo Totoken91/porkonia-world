@@ -1,10 +1,16 @@
-// Le train (modèles, chemin, physique) et les caméras
+// Le train (modèles, chemin, pose) et ses caméras
 import * as THREE from 'three';
-import { worldShading, TEX, clamp, camera, scene, lerp, hAt, tmGet } from './core.js';
+import { clamp, lerp } from '../engine/util.js';
+import { hAt, tmGet } from '../world/land.js';
+import { camera, scene } from '../engine/renderer.js';
+import { TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { M, Mset } from '../engine/geo.js';
 import { game, input } from './state.js';
-import { DEPART, STOP_MARK, SLEEPERS } from './tracks.js';
-import { SMAT, M, Kit, signMesh, PRODUITS, Mset } from './scenery.js';
-import { makePigGeometry } from './assets.js';
+import { DEPART, STOP_MARK, SLEEPERS } from '../world/tracks.js';
+import { PRODUITS } from '../world/cities.js';
+import { SMAT, Kit, signMesh } from '../world/scenery.js';
+import { makePigGeometry } from '../world/assets.js';
 
 export const LOCO_LEN = 17, WAGON_LEN = 18, GAP = 0.9;
 const TC = { bord: [128, 22, 40], creme: [243, 231, 201], gris: [70, 72, 80], noir: [26, 26, 30], acier: [190, 192, 198], bois: [150, 100, 62], rose: [244, 162, 178], jaune: [240, 196, 40] };

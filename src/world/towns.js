@@ -1,8 +1,15 @@
 // Villes : plan des rues, îlots, bâtiments, façades, toits
 import * as THREE from 'three';
-import { noiseAt, tmGet, waterAt, slopeAt, hAt, tmMark, WW, HH, clsAt, STATIONS, TEX, worldShading, Q, freeAfterUpload, mulberry } from './core.js';
-import { TOWN_SEGS, propAdd, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
-import { BUILDINGS, newDrape, drapeRect, drapeWall, LAMPS, TOWN_TREES, STREETS, WALLS, ROOFS, FOUNTAINS, TOWERS, HEDGES, CHALET, GWALLS, siteOk, reserve, FARMS, linCol, M, scenery, DRAPE, Kit, groundMaterial, DRAPES, TPL, facadePoint } from './scenery.js';
+import { mulberry } from '../engine/util.js';
+import { Q } from '../engine/quality.js';
+import { tmGet, waterAt, slopeAt, hAt, tmMark, WW, HH, clsAt, STATIONS } from './land.js';
+import { freeAfterUpload } from '../engine/renderer.js';
+import { noiseAt, TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { lazyRankStart, lazyRank, lazyShow, lazyFar } from '../engine/lazy.js';
+import { linCol, M, TPL } from '../engine/geo.js';
+import { TOWN_SEGS, propAdd } from './registry.js';
+import { BUILDINGS, newDrape, drapeRect, drapeWall, LAMPS, TOWN_TREES, STREETS, WALLS, ROOFS, FOUNTAINS, TOWERS, HEDGES, CHALET, GWALLS, siteOk, reserve, FARMS, scenery, DRAPE, Kit, groundMaterial, DRAPES, facadePoint } from './scenery.js';
 import { propsSidewalk, propsShop, propsSquare, propsIndustry, propsPark, propsPlot, yawTo, updateProps } from './props.js';
 
 // --- formes d'un bâtiment : règle unique (JS + shader) pour placer les fenêtres

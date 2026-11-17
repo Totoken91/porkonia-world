@@ -1,9 +1,16 @@
 // Végétation : atlas, essences, forêts, bottes de foin
 import * as THREE from 'three';
-import { mulberry, worldShading, noiseAt, TEX, WW, HH, Q, idxAt, CLS, LAKE, hAt, tmGet, slopeAt, clsAt, hashStr, waterAt, freeAfterUpload, STATIONS } from './core.js';
-import { PROPS, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
+import { mulberry, hashStr } from '../engine/util.js';
+import { Q } from '../engine/quality.js';
+import { WW, HH, idxAt, CLS, LAKE, hAt, tmGet, slopeAt, clsAt, waterAt, STATIONS } from './land.js';
+import { freeAfterUpload } from '../engine/renderer.js';
+import { noiseAt, TEX } from '../engine/textures.js';
+import { worldShading } from '../engine/lighting.js';
+import { lazyRankStart, lazyRank, lazyFar, lazyShow } from '../engine/lazy.js';
+import { linCol, Geo, M, Mset } from '../engine/geo.js';
+import { PROPS } from './registry.js';
 import { TRACKS } from './tracks.js';
-import { linCol, Geo, M, TOWN_TREES, Mset, scenery } from './scenery.js';
+import { TOWN_TREES, scenery } from './scenery.js';
 
 // ---------- végétation : espèces, LOD par tuiles, vent, translucidité
 // ---------- arbres procéduraux : tronc et branches réels, feuillage en cartes détourées

@@ -1,2 +1,2 @@
-// Point d'entrée. Le graphe des modules est acyclique ; game.js les charge dans l'ordre et lance le démarrage.
-import './game.js';
+// Point d'entrée. Les modules forment un graphe sans cycle : engine/ (moteur), world/ (décor), game/ (jeu).
+import './game/boot.js';

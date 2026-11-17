@@ -33,5 +33,5 @@ Point commun à retenir : pierre et tuiles, relief, et l'industrie alimentaire (
 
 ## Ce qui manque encore pour exécuter la vision
 
-- L'export complet de Porkopédia. `porkopedia/extrait.json` ne contient que 9 articles et le catalogue des titres, sans les sections consacrées à des personnes. Les spécialités et populations des 31 villes sont déjà dans `src/c_scenery.js` (`CITY`).
+- L'export complet de Porkopédia. `porkopedia/extrait.json` ne contient que 8 articles et le catalogue des titres, sans les sections consacrées à des personnes. Les spécialités et populations des 31 villes sont déjà dans `src/c_scenery.js` (`CITY`).
 - Le moteur des personnages (`citizen.h`, `porc4.h`) : dépôt Totoken91/Porkonia-Movie-Studio, dossier `moteur-3d/`.

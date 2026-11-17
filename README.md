@@ -9,6 +9,7 @@ npm install
 npm run dev       # développement : http://localhost:8080, rechargement à chaud
 npm run build     # construit dist/ avec Vite
 npm run serve     # sert dist/ sur http://localhost:8080
+npm test          # lint, build et contrôle sans écran (démarrage, erreurs, empreinte du décor)
 ```
 
 Le site est déployé par Vercel, qui lance `npm run build` lui-même : `dist/` n'est pas dans le dépôt. La branche `main` part en ligne directement.
@@ -22,11 +23,14 @@ Touches : ZQSD ou flèches, Maj courir, E voiture, P cochon, V vue, Espace frein
 
 ## Arborescence
 
-- `index.html` : la page, ses styles et l'interface.
-- `src/` : le jeu, en modules ES sans dépendance circulaire. Du plus bas au plus haut :
-  `core` (rendu, terrain, eau), `registry` (registres du décor, tuiles à la demande), `state`, `tracks`, `scenery`, `assets` (citoyen, cochon, voiture), `props`, `towns`, `landmarks`, `creatures`, `vegetation`, `ambiance`, `roads`, `train`, `ui`, `explore`, `world` (assemble le décor), `game` (boucle et démarrage). `main.js` est le point d'entrée, `data.js` télécharge les données, `mesure.js` n'est chargé qu'avec `?mesure`.
+- `index.html` : la page et son interface.
+- `src/` : le jeu, en modules ES sans dépendance circulaire.
+  - `engine/` : le moteur (rendu, lumière, textures, maillages à la demande).
+  - `world/` : le décor (relief, villes, accessoires, végétation, routes, voies) et ses graines aléatoires.
+  - `game/` : le jeu (balade, habitants, carte, sons, boucle d'image, démarrage, mode `?mesure`).
+  - `main.js` est le point d'entrée, `data.js` télécharge les données, `style.css` porte l'interface.
 - `data/` : `world2.js` (terrain, villes, voies), `cz.js` (citoyens et cochon), `car.js` (voiture), en modules ES, et les entrées du générateur (`cls.npy`, `cities.json`, `pop.json`).
-- `tools/` : `shot.mjs` (captures et profilage sans écran), `diff.py` (compare deux séries de captures), `terrain.py` (régénère `world2.js`).
+- `tools/` : `check.mjs` (contrôle sans écran), `shot.mjs` (captures et profilage), `diff.py` (compare deux séries de captures), `terrain.py` (régénère `world2.js`).
 - `bake/` : cuisson des modèles depuis des champs de distance (`cz.c`, `bake.py`, `car2.py`).
 
 Voir `CLAUDE.md` pour l'état du projet, les règles et la suite.

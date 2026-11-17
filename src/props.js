@@ -1,23 +1,18 @@
-// ============================================================================
-//  Partie D3 : le décor de détail — mobilier urbain, commerces, industrie, campagne
-// ============================================================================
-const PROP_CHUNK = 260;
-const PROPS = { map: new Map(), meshes: [], defs: {}, n: 0, where: {} };
-const SPOTS = [];          // emplacements d'habitants à l'arrêt : {x, z, yaw}
-const PROP_COLL = [];      // gros objets infranchissables : {x, z, r}
+// Décor de détail : mobilier urbain, commerces, industrie, campagne
+import * as THREE from 'three';
+import { hAt, worldShading, freeAfterUpload, Q, tmGet, waterAt, noiseAt, clsAt, slopeAt, STATIONS, clamp, WW, HH, hashStr } from './core.js';
+import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt } from './registry.js';
+import { Geo, M, scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
+
+      // gros objets infranchissables : {x, z, r}
 const TINTS = [[226, 44, 56], [250, 200, 40], [44, 120, 226], [56, 176, 96], [246, 130, 44], [156, 80, 200], [244, 130, 170], [60, 190, 200], [250, 246, 235], [123, 30, 46]];
 const tintOf = rnd => TINTS[(rnd() * TINTS.length) | 0];
-function propAdd(type, x, y, z, yaw = 0, s = 1, tint = null) {
-  const k = type + ':' + Math.floor(x / PROP_CHUNK) + ':' + Math.floor(z / PROP_CHUNK);
-  let L = PROPS.map.get(k); if (!L) PROPS.map.set(k, L = { type, list: [] });
-  L.list.push([x, y, z, yaw, s, tint]); PROPS.n++; (PROPS.where[type] || (PROPS.where[type] = [])).push([x, z]);
-}
 const propG = (x, z, dy = 0.12) => hAt(x, z) + dy;
-const yawTo = (dx, dz) => Math.atan2(dx, dz);
+export const yawTo = (dx, dz) => Math.atan2(dx, dz);
 function spot(x, z, yaw) { SPOTS.push({ x, z, yaw }); }
 
 // ---------- modèles (repère : posé sur y = 0, face vers +z ; dernier argument de teinte = zone coloriable)
-function propDefs() {
+export function propDefs() {
   const D = PROPS.defs;
   const def = (name, R, cast, fn) => { const g = new Geo(); const o = {
     b: (x, y, z, sx, sy, sz, col, ry = 0, lf = 0) => (g.add('box', M(x, y, z, sx, sy, sz, ry), col, null, lf), o),
@@ -96,7 +91,7 @@ function propsMaterial() {
   m.customProgramCacheKey = () => 'props';
   return m;
 }
-function buildProps() {
+export function buildProps() {
   const mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
   for (const [, L] of PROPS.map) {
     const d = PROPS.defs[L.type]; if (!d) continue;
@@ -111,10 +106,10 @@ function buildProps() {
   scenery.add(grp);
   return PROPS.n;
 }
-function updateProps(camPos) { for (const p of PROPS.meshes) p.mesh.visible = Math.hypot(p.cx - camPos.x, p.cz - camPos.z) < p.R; }
+export function updateProps(camPos) { for (const p of PROPS.meshes) p.mesh.visible = Math.hypot(p.cx - camPos.x, p.cz - camPos.z) < p.R; }
 
 // ---------- placement : trottoirs
-function propsSidewalk(o) {
+export function propsSidewalk(o) {
   const { W, T, horiz, c, s0, s1, hw, sw, sg, main, core, mont, rnd, size } = o;
   const Wl = (t, lat) => horiz ? W(t, c + lat) : W(c + lat, t);
   const n = horiz ? T.V : T.U, u = horiz ? T.U : T.V;
@@ -136,9 +131,8 @@ function propsSidewalk(o) {
   // voitures garées le long des grandes rues
   if (main && size >= 2) for (let t = s0 + 10; t < s1 - 9; t += 6.2) if (rnd() < 0.32) { const [x, z] = Wl(t, sg * (hw - 1.15)); PARKED.push({ x, z, yaw: along + (sg > 0 ? 0 : Math.PI) }); }
 }
-const PARKED = [];
 // ---------- commerces : enseigne, terrasse, ardoise, caisses
-function propsShop(b, rnd, core) {
+export function propsShop(b, rnd, core) {
   const fp = [0, 0, 0, 0];
   facadePoint(b, 0, (rnd() - 0.5) * (b.w - 2.4), b.floorY + b.gh - 0.75, fp);
   propAdd('enseigne', fp[0], fp[1], fp[2], fp[3], 1, tintOf(rnd));
@@ -149,7 +143,7 @@ function propsShop(b, rnd, core) {
   if (rnd() < 0.35) { const [x, z] = at(-(b.w / 2 - 1.2), 0.75); propAdd(rnd() < 0.5 ? 'caisses' : rnd() < 0.5 ? 'tonneaux' : 'futs', x, propG(x, z, 0.2), z, fp[3]); }
 }
 // ---------- place du marché
-function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
+export function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
   const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2, r = Math.min(a1 - a0, b1 - b0) / 2;
   const dirW = (da, db) => [T.U[0] * da + T.V[0] * db, T.U[1] * da + T.V[1] * db];
   const N = 9;
@@ -164,7 +158,7 @@ function propsSquare(Wd, T, a0, a1, b0, b1, rnd) {
   for (const [ta, tb] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]) { const [x, z] = Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb); propAdd('parterre', x, propG(x, z), z, 0, 1.3, tintOf(rnd)); }
   for (let k = 0; k < 3; k++) { const a = rnd() * 6.28, rr = r * (0.25 + rnd() * 0.2), [x, z] = Wd(ca + Math.cos(a) * rr, cb + Math.sin(a) * rr), y = rnd() * 6.28; spot(x, z, y); spot(x + Math.sin(y) * 1.1, z + Math.cos(y) * 1.1, y + Math.PI); }
 }
-function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
+export function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
   const ca = (a0 + a1) / 2, cb = (b0 + b1) / 2;
   const dirW = (da, db) => [T.U[0] * da + T.V[0] * db, T.U[1] * da + T.V[1] * db];
   { const [x, z] = Wd(ca, cb); propAdd('kiosque_musique', x, propG(x, z), z, 0); PROP_COLL.push({ x, z, r: 4.6 }); }
@@ -174,7 +168,7 @@ function propsPark(Wd, T, a0, a1, b0, b1, rnd) {
   for (const [ta, tb] of [[0.78, 0.25], [0.76, 0.8]]) { const [x, z] = Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb); propAdd('table_pique', x, propG(x, z), z, rnd() * 6); if (rnd() < 0.7) spot(x + 1.3, z, -Math.PI / 2); }
 }
 // ---------- jardin d'un pavillon
-function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
+export function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
   const put = (type, u, v, yaw, s = 1, tint = null) => { const [px, pz] = at(u, v); propAdd(type, px, propG(px, pz), pz, yaw, s, tint); return [px, pz]; };
   put('boite', Math.max(x + 0.8, dx0 - 0.7), 0.95, yawIn + Math.PI);
   if (dx1 - dx0 > 2.4 && rnd() < 0.55) { const [px, pz] = at((dx0 + dx1) / 2, set + d * 0.3); PARKED.push({ x: px, z: pz, yaw: yawIn + (rnd() < 0.5 ? 0 : Math.PI) }); }
@@ -188,7 +182,7 @@ function propsPlot(at, yawIn, x, pw, set, d, side0, w, plotD, dx0, dx1, rnd) {
   }
 }
 // ---------- zone d'activité, selon la spécialité de la ville
-function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
+export function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
   const sp = (st.meta.spec || '').toLowerCase();
   const kind = /brass|bière|malt|houblon|brasser/.test(sp) ? 'brew' : /fum|jambon|saucis|charcut|salais|rôti|grill|côtes|conserv/.test(sp) ? 'smoke' : /céréal|élevage|aliment|coopérat|pépini/.test(sp) ? 'grain' : /maritime|pêche|cabotage|plaisance|douane|port|sel|fret/.test(sp) ? 'port' : 'divers';
   const P = (ta, tb) => Wd(a0 + (a1 - a0) * ta, b0 + (b1 - b0) * tb);
@@ -205,7 +199,7 @@ function propsIndustry(Wd, T, a0, a1, b0, b1, rnd, st) {
   for (let k = 0; k < 4; k++) { const [x, z] = P(0.2 + rnd() * 0.6, 0.45 + rnd() * 0.12); spot(x, z, rnd() * 6.28); }
 }
 // ---------- le long des routes
-function propsRoad(rows, A, B, rnd, ri) {
+export function propsRoad(rows, A, B, rnd, ri) {
   const n = rows.length;
   for (let k = 6; k < n - 6; k++) {
     const r = rows[k];
@@ -232,7 +226,7 @@ function propsRoad(rows, A, B, rnd, ri) {
   }
 }
 // ---------- campagne, fermes, côtes, ciel
-function propsCountry(rnd) {
+export function propsCountry(rnd) {
   for (const f of FARMS) {
     const c = Math.cos(f.rot), s = Math.sin(f.rot), at = (u, v) => [f.x + c * u - s * v, f.z + s * u + c * v];
     { const [x, z] = at(34, -8); propAdd('siloferme', x, propG(x, z, 0), z, 0, 1, tintOf(rnd)); PROP_COLL.push({ x, z, r: 2.2 }); }
@@ -280,7 +274,7 @@ function propsCountry(rnd) {
   // montgolfières
   for (let k = 0; k < 9; k++) { const x = (rnd() - 0.5) * WW * 0.8, z = (rnd() - 0.5) * HH * 0.8; propAdd('montgolfiere', x, Math.max(hAt(x, z), 0) + 150 + rnd() * 220, z, rnd() * 6, 1, tintOf(rnd)); }
 }
-function buildParked() {
+export function buildParked() {
   if (!PARKED.length) return;
   const cols = [[226, 36, 48], [36, 110, 230], [250, 246, 235], [250, 200, 30], [50, 180, 110], [250, 130, 40], [240, 130, 170], [70, 200, 210], [150, 80, 200], [60, 60, 70]];
   const by = new Map();

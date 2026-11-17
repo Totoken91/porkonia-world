@@ -1,30 +1,28 @@
-// ============================================================================
-//  PORKONIA EXPRESS — simulateur de conduite SCPB  (rendu nouvelle génération)
-//  Partie A : socle, données, rendu, ciel, lumière, textures, terrain, eau
-// ============================================================================
+// Socle : outils, qualité, données du monde, rendu, ciel, lumière, textures, terrain, eau
+import { worldData } from './data.js';
 import * as THREE from 'three';
-import { Sky } from 'three/addons/objects/Sky.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { Sky } from 'three/addons/objects/Sky.js';
 
-const $ = id => document.getElementById(id);
-const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-const lerp = (a, b, t) => a + (b - a) * t;
+export const $ = id => document.getElementById(id);
+export const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+export const lerp = (a, b, t) => a + (b - a) * t;
 const smooth = t => t * t * (3 - 2 * t);
-function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
-function b64(s, T) { const bin = atob(s); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
-async function gunzip(s) {
+export function mulberry(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+export function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+export function b64(s, T) { const bin = atob(s); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); return new T(u8.buffer); }
+export async function gunzip(s) {
   const bin = atob(s); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
   const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
-const fmtMoney = n => Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ');
-const setStatus = t => { const el = $('loading-status'); if (el) el.textContent = t; };
-const tick = () => new Promise(r => setTimeout(r, 0));
+export const fmtMoney = n => Math.round(n).toLocaleString('fr-FR').replace(/ | /g, ' ');
+export const setStatus = t => { const el = $('loading-status'); if (el) el.textContent = t; };
+export const tick = () => new Promise(r => setTimeout(r, 0));
 
 // ---------- détection des capacités et niveau de qualité
 const IS_TOUCH = matchMedia('(pointer: coarse)').matches;
@@ -33,24 +31,24 @@ const QUALITIES = {
   haute: { label: 'Haute', pr: 1.25, shadow: 2048, shadowR: 170, shadowEvery: 2, grass: 34000, grassR: 62, treeNear: 330, cardR: 520, detailR: 420, propK: 0.8, treeMid: 1700, treeFar: 4800, reflect: 0, rays: false, msaa: 2, trees: 0.85, bloom: 1 },
   mobile: { label: 'Économe', pr: 1.0, shadow: 1024, shadowR: 110, shadowEvery: 3, grass: 15000, grassR: 46, treeNear: 190, cardR: 260, detailR: 240, propK: 0.5, treeMid: 1100, treeFar: 3200, reflect: 0, rays: false, msaa: 0, trees: 0.6, bloom: 0 },
 };
-let QKEY = (() => { try { return localStorage.getItem('porkonia-q3') || (IS_TOUCH ? 'mobile' : 'haute'); } catch (e) { return 'haute'; } })();
+export let QKEY = (() => { try { return localStorage.getItem('porkonia-q3') || (IS_TOUCH ? 'mobile' : 'haute'); } catch (e) { return 'haute'; } })();
 if (!QUALITIES[QKEY]) QKEY = 'haute';
-let Q = QUALITIES[QKEY];
+export let Q = QUALITIES[QKEY];
 
 // ---------- données du monde
 setStatus('Décompression de la carte de Porkonia…');
-const PW = window.PORK_WORLD;
-const NX = PW.NX, NZ = PW.NZ, WW = PW.W, HH = PW.H, CELL = WW / (NX - 1);
+export const PW = await worldData;
+export const NX = PW.NX, NZ = PW.NZ, WW = PW.W, HH = PW.H, CELL = WW / (NX - 1);
 const _hraw = new Int16Array((await gunzip(PW.heights)).buffer);
-const H = new Float32Array(_hraw.length); for (let i = 0; i < _hraw.length; i++) H[i] = _hraw[i] / 10;
-const HGT = H;
+export const H = new Float32Array(_hraw.length); for (let i = 0; i < _hraw.length; i++) H[i] = _hraw[i] / 10;
+export const HGT = H;
 const CLSP = await gunzip(PW.cls);
 const AOV = await gunzip(PW.ao);
-const CLS = new Uint8Array(CLSP.length), LAKE = new Uint8Array(CLSP.length);
+export const CLS = new Uint8Array(CLSP.length), LAKE = new Uint8Array(CLSP.length);
 for (let i = 0; i < CLSP.length; i++) { CLS[i] = CLSP[i] & 7; LAKE[i] = CLSP[i] >> 3; }
 const LAKE_LV = [0, ...PW.lakes];
 
-function hAt(x, z) {
+export function hAt(x, z) {
   let fi = (x / WW + 0.5) * (NX - 1), fj = (z / HH + 0.5) * (NZ - 1);
   fi = clamp(fi, 0, NX - 1.0001); fj = clamp(fj, 0, NZ - 1.0001);
   const i = fi | 0, j = fj | 0, tx = fi - i, tz = fj - j;
@@ -58,20 +56,20 @@ function hAt(x, z) {
   if (tz >= tx) return h00 + (h11 - h01) * tx + (h01 - h00) * tz;
   return h00 + (h10 - h00) * tx + (h11 - h10) * tz;
 }
-function idxAt(x, z) {
+export function idxAt(x, z) {
   const i = clamp(Math.round((x / WW + 0.5) * (NX - 1)), 0, NX - 1), j = clamp(Math.round((z / HH + 0.5) * (NZ - 1)), 0, NZ - 1);
   return j * NX + i;
 }
-const clsAt = (x, z) => CLS[idxAt(x, z)];
-function waterAt(x, z) { const k = idxAt(x, z); if (LAKE[k]) return LAKE_LV[LAKE[k]]; if (CLS[k] === 0) return 0; return -1e9; }
-function slopeAt(x, z) { const d = 6; return Math.hypot(hAt(x + d, z) - hAt(x - d, z), hAt(x, z + d) - hAt(x, z - d)) / (2 * d); }
+export const clsAt = (x, z) => CLS[idxAt(x, z)];
+export function waterAt(x, z) { const k = idxAt(x, z); if (LAKE[k]) return LAKE_LV[LAKE[k]]; if (CLS[k] === 0) return 0; return -1e9; }
+export function slopeAt(x, z) { const d = 6; return Math.hypot(hAt(x + d, z) - hAt(x - d, z), hAt(x, z + d) - hAt(x, z - d)) / (2 * d); }
 
 // masque fin (12,5 m) : 1 voie, 2 gare, 3 bâti, 4 rue, 5 réservé
 const TRACKMASK_RES = 12.5;
 const TMW = Math.ceil(WW / TRACKMASK_RES), TMH = Math.ceil(HH / TRACKMASK_RES);
 const TRACKMASK = new Uint8Array(TMW * TMH);
 function tmIdx(x, z) { const i = Math.floor((x + WW / 2) / TRACKMASK_RES), j = Math.floor((z + HH / 2) / TRACKMASK_RES); if (i < 0 || j < 0 || i >= TMW || j >= TMH) return -1; return j * TMW + i; }
-function tmMark(x, z, r, v) {
+export function tmMark(x, z, r, v) {
   const n = Math.ceil(r / TRACKMASK_RES);
   const ci = Math.floor((x + WW / 2) / TRACKMASK_RES), cj = Math.floor((z + HH / 2) / TRACKMASK_RES);
   for (let j = cj - n; j <= cj + n; j++) for (let i = ci - n; i <= ci + n; i++) {
@@ -80,30 +78,28 @@ function tmMark(x, z, r, v) {
     if (dx * dx + dz * dz <= r * r) { const k = j * TMW + i; TRACKMASK[k] = Math.max(TRACKMASK[k], v); }
   }
 }
-const tmGet = (x, z) => { const k = tmIdx(x, z); return k < 0 ? 0 : TRACKMASK[k]; };
+export const tmGet = (x, z) => { const k = tmIdx(x, z); return k < 0 ? 0 : TRACKMASK[k]; };
 
-const STATIONS = PW.stations.map((s, i) => ({ ...s, id: i, dir: new THREE.Vector2(Math.cos(s.ax), Math.sin(s.ax)) }));
-const STATION_BY_NAME = Object.fromEntries(STATIONS.map(s => [s.name, s]));
+export const STATIONS = PW.stations.map((s, i) => ({ ...s, id: i, dir: new THREE.Vector2(Math.cos(s.ax), Math.sin(s.ax)) }));
+export const STATION_BY_NAME = Object.fromEntries(STATIONS.map(s => [s.name, s]));
 
 // ---------- moteur de rendu
-const canvas = $('scene');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+export const canvas = $('scene');
+export const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.62;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.shadowMap.autoUpdate = false;
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(65, 1, 0.3, 16000);
+export const scene = new THREE.Scene();
+export const camera = new THREE.PerspectiveCamera(65, 1, 0.3, 16000);
 camera.layers.enable(1); camera.layers.enable(2);
 scene.add(camera);
 scene.fog = new THREE.FogExp2(0xd9c3a5, 0.000085);
-
-let pixelRatio = Math.min(window.devicePixelRatio || 1, Q.pr);
 const composerRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: Q.msaa });
-const composer = new EffectComposer(renderer, composerRT);
+export const composer = new EffectComposer(renderer, composerRT);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.42, 1.6);
+export const bloomPass = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.32, 0.42, 1.6);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 const GradeShader = {
@@ -150,12 +146,12 @@ const GradeShader = {
       gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
     }`,
 };
-const gradePass = new ShaderPass(GradeShader);
+export const gradePass = new ShaderPass(GradeShader);
 composer.addPass(gradePass);
 
 
 // libère la copie CPU des attributs statiques une fois envoyés à la carte graphique
-function freeAfterUpload(geo, extra = []) {
+export function freeAfterUpload(geo, extra = []) {
   const f = function () { this.array = null; };
   if (geo) for (const k in geo.attributes) if (k !== 'position' || geo.boundingSphere) geo.attributes[k].onUpload(f);
   for (const a of extra) if (a) a.onUpload(f);
@@ -185,9 +181,9 @@ function makeNoiseTexture(size = 256) {
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.needsUpdate = true;
   return t;
 }
-const NOISE = makeNoiseTexture(256);
+export const NOISE = makeNoiseTexture(256);
 const NOISE_DATA = NOISE.image.data;
-function noiseAt(u, v, c = 0) { const s = 256; const x = ((Math.floor(u * s) % s) + s) % s, y = ((Math.floor(v * s) % s) + s) % s; return NOISE_DATA[(y * s + x) * 4 + c] / 255; }
+export function noiseAt(u, v, c = 0) { const s = 256; const x = ((Math.floor(u * s) % s) + s) % s, y = ((Math.floor(v * s) % s) + s) % s; return NOISE_DATA[(y * s + x) * 4 + c] / 255; }
 
 function canvasTex(size, draw, srgb = true, repeat = true) {
   const c = document.createElement('canvas'); c.width = c.height = size;
@@ -259,8 +255,8 @@ function normalFromCanvas(c, strength) {
   }
   g.putImageData(img, 0, 0); return texFromCanvas(o, false);
 }
-const TEX = {};
-function buildTextures() {
+export const TEX = {};
+export function buildTextures() {
   {
     const gc = strokeTex(1024, 501, 'rgb(58,96,34)', [
       { kind: 'blades', len: [6, 15], groups: [['rgb(42,74,26)', 2.2, 9000], ['rgb(66,108,38)', 1.8, 9000], ['rgb(84,128,44)', 1.6, 9000], ['rgb(104,146,54)', 1.4, 7000], ['rgb(128,160,66)', 1.2, 4000], ['rgb(150,150,80)', 1.1, 1500]] },
@@ -312,16 +308,16 @@ function buildTextures() {
 }
 
 // ---------- heures de la journée
-const TIMES = {
+export const TIMES = {
   matin: { nom: 'Matin', elev: 9, az: 105, turb: 2.3, ray: 1.4, mie: 0.0032, sun: [1.0, 0.84, 0.66], sunI: 3.4, exp: 0.56, fog: 0xc9c6c4, dens: 0.00008, lit: 0.04, cloud: 0.42, skyMul: 0.8 },
   midi: { nom: 'Plein jour', elev: 52, az: 175, turb: 2.0, ray: 0.9, mie: 0.004, sun: [1.0, 0.97, 0.92], sunI: 4.2, exp: 0.46, fog: 0xa9c4e0, dens: 0.00006, lit: 0.0, cloud: 0.48, skyMul: 0.8 },
   doree: { nom: 'Heure dorée', elev: 11, az: 248, turb: 2.3, ray: 1.6, mie: 0.0034, sun: [1.0, 0.78, 0.5], sunI: 3.8, exp: 0.55, fog: 0xc7b7a3, dens: 0.00008, lit: 0.05, cloud: 0.45, skyMul: 0.75 },
   crepuscule: { nom: 'Crépuscule', elev: 1.5, az: 258, turb: 3.6, ray: 2.6, mie: 0.0055, sun: [1.0, 0.56, 0.3], sunI: 2.0, exp: 0.85, fog: 0x7a6676, dens: 0.00009, lit: 0.6, cloud: 0.5, skyMul: 0.85 },
 };
-let TKEY = (() => { try { return localStorage.getItem('porkonia-express-t') || 'midi'; } catch (e) { return 'midi'; } })();
+export let TKEY = (() => { try { return localStorage.getItem('porkonia-express-t') || 'midi'; } catch (e) { return 'midi'; } })();
 if (!TIMES[TKEY]) TKEY = 'doree';
-const SUN_DIR = new THREE.Vector3();
-const SUN_COL = new THREE.Color();
+export const SUN_DIR = new THREE.Vector3();
+export const SUN_COL = new THREE.Color();
 function sunVector(t) {
   const e = THREE.MathUtils.degToRad(t.elev), a = THREE.MathUtils.degToRad(t.az);
   return new THREE.Vector3(Math.cos(e) * Math.sin(a), Math.sin(e), -Math.cos(e) * Math.cos(a)).normalize();
@@ -343,7 +339,7 @@ function configureShadows() {
 }
 configureShadows();
 const _sx = new THREE.Vector3(), _sy = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
-function updateSunShadow(focus) {
+export function updateSunShadow(focus) {
   const texel = (2 * Q.shadowR) / Q.shadow;
   _sx.crossVectors(_up, SUN_DIR).normalize(); _sy.crossVectors(SUN_DIR, _sx);
   let u = focus.dot(_sx), v = focus.dot(_sy); const w = focus.dot(SUN_DIR);
@@ -354,7 +350,7 @@ function updateSunShadow(focus) {
 }
 
 // ---------- ciel atmosphérique + nuages (un seul passage)
-const sky = new Sky();
+export const sky = new Sky();
 sky.scale.setScalar(10000);
 sky.frustumCulled = false;
 sky.material.uniforms.tNoise = { value: NOISE };
@@ -394,7 +390,7 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 let envRT = null;
 
 // partagé par les matériaux du monde : ombres des montagnes et des nuages
-const WS = {
+export const WS = {
   uSunVis: { value: null }, uCloud: { value: NOISE }, uTime: { value: 0 }, uCover: { value: 0.45 },
   uWorld: { value: new THREE.Vector2(WW, HH) }, uSunDirW: { value: SUN_DIR }, uSunView: { value: new THREE.Vector3() }, uSunColU: { value: SUN_COL },
   uLit: { value: 0 },
@@ -411,7 +407,7 @@ const WS_PARS = `
     float cs = 1.0 - smoothstep(1.0 - uCover, 1.0 - uCover + 0.28, d) * 0.72;
     return sv * cs;
   }`;
-function worldShading(mat, extra = {}) {
+export function worldShading(mat, extra = {}) {
   const prev = mat.onBeforeCompile;
   mat.onBeforeCompile = (sh, r) => {
     Object.assign(sh.uniforms, WS);
@@ -456,7 +452,8 @@ function computeSunVis() {
   svTex.needsUpdate = true;
 }
 
-function applyTime(key) {
+export const TIME_LISTENERS = [];   // appelés à chaque changement d'heure
+export function applyTime(key) {
   TKEY = key; const t = TIMES[key];
   try { localStorage.setItem('porkonia-express-t', key); } catch (e) { }
   SUN_DIR.copy(sunVector(t));
@@ -475,7 +472,7 @@ function applyTime(key) {
   gradePass.uniforms.uWarm.value = key === 'midi' ? 0.0 : 0.022;
   computeSunVis();
   updateEnvironment();
-  if (typeof onTimeChanged === 'function') onTimeChanged(t);
+  for (const f of TIME_LISTENERS) f(t);
 }
 function updateEnvironment() {
   const sp = sky.position.clone();
@@ -572,7 +569,7 @@ function terrainMaterial() {
   return m;
 }
 
-function buildTerrain(fieldCenters) {
+export function buildTerrain(fieldCenters) {
   const group = new THREE.Group();
   // attributs par sommet sur toute la grille fine
   const N = NX * NZ;
@@ -672,12 +669,12 @@ function buildTerrain(fieldCenters) {
 }
 
 // ---------- eau : vagues, profondeur, écume, reflets (ciel + scène miroir)
-const HTEX = (() => { const t = new THREE.DataTexture(H, NX, NZ, THREE.RedFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
-const reflectRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
+export const HTEX = (() => { const t = new THREE.DataTexture(H, NX, NZ, THREE.RedFormat, THREE.FloatType); t.minFilter = t.magFilter = THREE.NearestFilter; t.needsUpdate = true; return t; })();
+export const reflectRT = new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType });
 const reflCam = new THREE.PerspectiveCamera();
 reflCam.layers.set(0);
 const reflTexMatrix = new THREE.Matrix4();
-const WATERS = [];
+export const WATERS = [];
 function waterMaterial(level, planar) {
   const m = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
@@ -737,7 +734,7 @@ function waterMaterial(level, planar) {
   WATERS.push(m);
   return m;
 }
-function buildWater() {
+export function buildWater() {
   const group = new THREE.Group();
   const seaMat = waterMaterial(0, true);
   const sea = new THREE.Mesh(new THREE.PlaneGeometry(100000, 100000, 1, 1), seaMat);
@@ -762,7 +759,7 @@ function buildWater() {
   return group;
 }
 const _rv = new THREE.Vector3(), _rt = new THREE.Vector3(), _rl = new THREE.Vector3(), _rplane = new THREE.Plane(), _rclip = new THREE.Vector4(), _rq = new THREE.Vector4(), _rrot = new THREE.Matrix4();
-function renderReflection() {
+export function renderReflection() {
   if (!Q.reflect) { for (const w of WATERS) w.uniforms.uRefl.value = 0; return; }
   const camPos = camera.getWorldPosition(new THREE.Vector3());
   if (camPos.y < 0.5) return;

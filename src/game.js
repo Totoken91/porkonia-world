@@ -1,6 +1,21 @@
-// ============================================================================
-//  Partie E : économie, itinéraires, interface, sons, boucle principale
-// ============================================================================
+// Économie, itinéraires, interface, sons, boucle principale, démarrage
+import * as THREE from 'three';
+import { Q, STATIONS, clamp, $, fmtMoney, NX, NZ, HGT, CLS, LAKE, WW, HH, lerp, canvas, QKEY, applyTime, SUN_DIR, camera, hAt, sky, updateSunShadow, WS, WATERS, gradePass, renderer, renderReflection, composer, bloomPass, reflectRT, TIME_LISTENERS, TKEY, setStatus, buildTextures, hashStr, scene, buildTerrain, buildWater, TIMES, STATION_BY_NAME, waterAt, clsAt, slopeAt, tmGet } from './core.js';
+import { ROADS, PROPS, ANIMATED, groundAt } from './registry.js';
+import { game, input, clock } from './state.js';
+import { TRACKS, DEPART, STUBS, STOP_MARK, PLATFORM_HALF, markTrackMask, buildNetwork, buildSleepers, PILLARS, PORTALS } from './tracks.js';
+import { PRODUITS, scenery, LANDMARK_SPOTS, BUILDINGS, DRAPES } from './scenery.js';
+import { updateTownLOD, PART_MESHES } from './towns.js';
+import { citizens, updateCitizens, updateHerds } from './creatures.js';
+import { updateVegetation, VEG, treeMaterial } from './vegetation.js';
+import { updateBirds, puff, updateSmoke } from './ambiance.js';
+import { train, cam, rebuildConsist, updateTrainPose, headPos, locate, LOCO_LEN, WAGON_LEN, GAP, flipTrain, stationOffset, nextOptions, headDir, CAM_MODES, setCamMode, CAM_LABELS, upcomingLimit, chosenNext, advanceHead, updateCamera, updateSleepers, fitFov, trainMaterials, buildLoco, buildCab, placeTrainAt } from './train.js';
+import { toast, mapState, closeMap, openMap } from './ui.js';
+import { EX, exMapInfo, exUpdate, exCamera, exStart, exTeleport, exToggleCar, NPC, updateNpcs, exSetView, exPlacePlayer, exToggleView, exTogglePig, exPlaceCar, exInit } from './explore.js';
+import { buildScenery } from './world.js';
+
+let pixelRatio = Math.min(window.devicePixelRatio || 1, Q.pr);
+
 const SAVE_KEY = 'porkonia-express-v1';
 
 // ---------- distances entre gares (plus court chemin sur le réseau)
@@ -47,13 +62,6 @@ function computeRoute(target) {
   return { target, states, len: found.c };
 }
 const ALLTRACKS = {}; for (const t of [...TRACKS, ...STUBS]) ALLTRACKS[t.id] = t;
-
-// ---------- état du jeu
-const game = {
-  money: 1500, cap: 3, lvl: 0, horn: 'classique', slots: [null, null, null], offers: {}, offersAt: {}, now: 0,
-  stoppedAt: -1, panelOpen: false, route: null, ff: 1, sound: true, voice: false, stats: { livraisons: 0, gains: 0, km: 0 },
-  lastStation: 0, tickerT: 30, nextOverspeed: 0, started: false, routeReverseAt: -1, routeManual: false,
-};
 const LEVELS = [
   { nom: 'BB 12012 d’origine', vmax: 140, power: 2.4e6, f0: 290e3, prix: 0 },
   { nom: 'Moteur Brasswagen V12', vmax: 180, power: 3.6e6, f0: 330e3, prix: 2800 },
@@ -215,13 +223,6 @@ function speak(text) {
   if (!game.voice || !window.speechSynthesis) return;
   try { const u = new SpeechSynthesisUtterance(text); u.lang = 'fr-FR'; u.rate = 1.0; window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch (e) { }
 }
-
-// ---------- interface
-function toast(html, kind = '') {
-  const el = document.createElement('div'); el.className = 'toast ' + kind; el.innerHTML = html;
-  $('toasts').appendChild(el);
-  setTimeout(() => el.classList.add('out'), 3600); setTimeout(() => el.remove(), 4200);
-}
 function ticker(text) {
   const el = $('ticker');
   el.querySelector('span').textContent = text;
@@ -375,9 +376,6 @@ function applyRouteSwitches() {
 game.onPassStation = st => {
   if (game.route) applyRouteSwitches();
 };
-
-// ---------- carte du réseau
-const mapState = { base: null, sel: -1, zoom: 1, cx: 0.5, cy: 0.5, ox: 0, oy: 0, w: 0, h: 0 };
 function buildMapBase() {
   const c = document.createElement('canvas'); c.width = NX; c.height = NZ; const g = c.getContext('2d');
   const img = g.createImageData(NX, NZ);
@@ -436,6 +434,7 @@ function drawMap() {
   if (dense) { g.font = '600 13px "Barlow Condensed", sans-serif'; g.fillStyle = 'rgba(255,248,232,.85)'; g.fillText('Zoomez pour voir tous les noms', 10, H - 10); }
   renderMapInfo();
 }
+mapState.draw = drawMap;
 function zoomMap(f, px, py) {
   const cv = $('map-canvas'), r = cv.getBoundingClientRect();
   px = px ?? r.width / 2; py = py ?? r.height / 2;
@@ -455,8 +454,6 @@ function renderMapInfo() {
   el.innerHTML = `<h3>${st.name}</h3><p>${st.meta.devise || ''}</p><p class="muted">Produit : ${prods}. ${st.meta.size >= 3 ? 'Dépôt SCPB sur place.' : ''}</p><p class="muted">À ${pkm(SP[game.lastStation][st.id])} de ${STATIONS[game.lastStation].name} par le rail.${offers ? ` ${offers.length} offres vues.` : ''}</p><button class="btn small" id="m-route">Itinéraire vers ${st.name}</button>`;
   $('m-route').onclick = () => { setRoute(st.id); game.routeManual = true; drawMap(); };
 }
-function openMap() { $('map').classList.add('open'); requestAnimationFrame(drawMap); }
-function closeMap() { $('map').classList.remove('open'); }
 (() => {
   const cv = $('map-canvas'), pts = new Map();
   let moved = 0, pinch0 = 0;
@@ -483,9 +480,6 @@ function closeMap() { $('map').classList.remove('open'); }
   $('map-zin').onclick = () => zoomMap(1.5);
   $('map-zout').onclick = () => zoomMap(1 / 1.5);
 })();
-
-// ---------- commandes
-const input = { dragging: false, keys: {} };
 function setNotch(n) { train.notch = clamp(n, -3, 5); renderLever(); }
 function renderLever() {
   const n = train.notch;
@@ -687,15 +681,6 @@ function checkStops() {
   }
   if (so && train.v === 0 && train.notch <= 0 && so.off > -PLATFORM_HALF + 20 && so.off < PLATFORM_HALF + 20) arriveAt(STATIONS[so.st], so.off);
 }
-
-// ---------- démarrage
-function fitFov() {
-  const base = cam.mode === 'cabine' ? 68 : 58;
-  const minH = cam.mode === 'cabine' ? 54 : 48; // champ horizontal minimal (portrait)
-  const need = 2 * Math.atan(Math.tan(minH * Math.PI / 360) / camera.aspect) * 180 / Math.PI;
-  camera.fov = Math.min(Math.max(base, need), 92);
-  camera.updateProjectionMatrix();
-}
 function resize() {
   setRenderSize();
   if ($('map').classList.contains('open')) drawMap();
@@ -705,8 +690,7 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) { save(); if (audio.ctx) audio.ctx.suspend().catch(() => { }); }
   else if (audio.ctx && game.started) audio.ctx.resume().catch(() => { });
 });
-
-let clockPrev = performance.now(), simT = 0, titleT = 0;
+let clockPrev = performance.now(), titleT = 0;
 const perf = { acc: 0, frames: 0, t: 0, low: 0, high: 0 };
 const _focus = new THREE.Vector3(), _fwd = new THREE.Vector3(), _sunScreen = new THREE.Vector3(), _camPos = new THREE.Vector3();
 let sunVisSmooth = 0;
@@ -754,7 +738,7 @@ function frame(now) {
   if (PAUSE.on && PAUSE.once <= 0) { requestAnimationFrame(frame); return; }
   if (PAUSE.on) { PAUSE.once--; if (PAUSE.once === 0 && PAUSE.cb) { const cb = PAUSE.cb; PAUSE.cb = null; setTimeout(cb, 0); } }
   const rdt = Math.min(0.05, (now - clockPrev) / 1000); clockPrev = now;
-  simT += rdt;
+  clock.simT += rdt;
   if (EX.on) { if (game.started) exUpdate(rdt); else titleT += rdt; }
   else if (game.started) {
     const paused = game.panelOpen || $('map').classList.contains('open') || $('menu').classList.contains('open');
@@ -772,16 +756,16 @@ function frame(now) {
     titleT += rdt;
   }
   updateTrainPose();
-  if (EX.on && game.started) exCamera(rdt); else updateCamera(rdt, simT);
+  if (EX.on && game.started) exCamera(rdt); else updateCamera(rdt, clock.simT);
   camera.updateMatrixWorld();
   camera.getWorldPosition(_camPos);
   sky.position.copy(_camPos);
-  updateCitizens(simT, rdt, _camPos);
-  updateHerds(simT, rdt, _camPos);
+  updateCitizens(clock.simT, rdt, _camPos);
+  updateHerds(clock.simT, rdt, _camPos);
   updateVegetation(_camPos);
   updateTownLOD(_camPos);
   updateSleepers();
-  updateBirds(simT);
+  updateBirds(clock.simT);
   if (train.notch > 0 && Math.random() < 0.3 + train.notch * 0.1) {
     const p = new THREE.Vector3(0, 5.0, 1.3).applyMatrix4(train.loco.matrixWorld);
     puff(p.x, p.y, p.z, (Math.random() - 0.5) * 0.6, 2.2 + train.notch * 0.5, (Math.random() - 0.5) * 0.6, 0.45 + train.notch * 0.08, 2.6);
@@ -792,11 +776,11 @@ function frame(now) {
   camera.getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
   _focus.copy(_camPos).addScaledVector(_fwd, Q.shadowR * 0.45); _focus.y = hAt(_focus.x, _focus.z);
   if ((frameN + 1) % (Q.shadowEvery || 1) === 0) updateSunShadow(_focus);
-  WS.uTime.value = simT; sky.material.uniforms.uTime.value = simT;
-  for (const w of WATERS) w.uniforms.uTime.value = simT;
+  WS.uTime.value = clock.simT; sky.material.uniforms.uTime.value = clock.simT;
+  for (const w of WATERS) w.uniforms.uTime.value = clock.simT;
   WS.uSunView.value.copy(SUN_DIR).transformDirection(camera.matrixWorldInverse);
   const sv = sunVisibility(_camPos); sunVisSmooth = lerp(sunVisSmooth, sv, 1 - Math.pow(0.002, rdt));
-  const gu = gradePass.uniforms; gu.uTime.value = simT; gu.uSun.value.set(_sunScreen.x * 0.5 + 0.5, _sunScreen.y * 0.5 + 0.5); gu.uSunVis.value = sunVisSmooth * (cam.mode === 'cabine' ? 0.7 : 1);
+  const gu = gradePass.uniforms; gu.uTime.value = clock.simT; gu.uSun.value.set(_sunScreen.x * 0.5 + 0.5, _sunScreen.y * 0.5 + 0.5); gu.uSunVis.value = sunVisSmooth * (cam.mode === 'cabine' ? 0.7 : 1);
   gu.uRays.value = Q.rays ? 1 : 0;
   frameN++; if (frameN % (Q.shadowEvery || 1) === 0) renderer.shadowMap.needsUpdate = true;
   renderReflection();
@@ -813,6 +797,7 @@ function setRenderSize() {
   if (Q.reflect) reflectRT.setSize(Math.max(64, Math.round(w * pixelRatio * Q.reflect)), Math.max(64, Math.round(h * pixelRatio * Q.reflect)));
   camera.aspect = w / h; fitFov();
 }
+TIME_LISTENERS.push(onTimeChanged);
 function onTimeChanged(t) {
   if (train.loco && train.loco.userData.spot) train.loco.userData.spot.intensity = { matin: 400, midi: 0, doree: 420, crepuscule: 2400 }[TKEY] ?? 600;
   document.querySelectorAll('[data-time]').forEach(b => b.classList.toggle('on', b.dataset.time === TKEY));

@@ -1,7 +1,7 @@
 import os
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 """Builds Porkonia's terrain, station layout and SCPB rail network for the train sim.
-Outputs build/world.js (window.PORK_WORLD = {...}) with base64 binary blobs."""
+Outputs build/world.js (module ES : export default {...}) with base64 binary blobs."""
 import json, base64, heapq, math
 import numpy as np
 from scipy import ndimage as ndi
@@ -472,6 +472,6 @@ for e in edges_out:
                          y=base64.b64encode(np.round(yv * 20).astype('<i4').tobytes()).decode()))
 world = dict(NX=NXF, NZ=NZF, W=WW, H=HH, gz=True, heights=b64gz(heights), cls=b64gz(packed), ao=b64gz(np.round(ao * 255).astype(np.uint8)),
              lakes=lake_levels, stations=stations, edges=edges_js)
-open(ROOT + '/data/world2.js', 'w').write('window.PORK_WORLD=' + json.dumps(world, ensure_ascii=False, separators=(',', ':')) + ';\n')
+open(ROOT + '/data/world2.js', 'w').write('export default ' + json.dumps(world, ensure_ascii=False, separators=(',', ':')) + ';\n')
 np.save(ROOT + '/data/hF.npy', hF); np.save(ROOT + '/data/aoF.npy', ao)
 print('size KB', len(open(ROOT + '/data/world2.js').read()) // 1024, 'h range', hF.min(), hF.max(), 'lakes', lake_levels, 'total', time.time() - t0)

@@ -1,6 +1,26 @@
-// ============================================================================
-//  Partie D1 : modèles issus du moteur Porkonia 3D — le citoyen standard (citizen.h) et la voiture
-// ============================================================================
+// Modèles du moteur Porkonia 3D : citoyen standard (citizen.h), cochon (porc4.h), voiture
+import * as THREE from 'three';
+import { czData, carData } from './data.js';
+import { worldShading, gunzip, hashStr } from './core.js';
+import { Geo, M, Kit } from './scenery.js';
+
+// ---------- cochons
+export function makePigGeometry(gold) {
+  const g = new Geo();
+  const P = [255, 255, 255], S = [228, 196, 204], D = [60, 44, 44];
+  g.add('sph', M(0, 0.78, 0, 0.84, 0.74, 1.42), P);
+  g.add('sph', M(0, 0.98, 0.78, 0.66, 0.6, 0.6), P);
+  g.add('cyl', M(0, 0.92, 1.1, 0.34, 0.16, 0.28, 0, Math.PI / 2), S);
+  g.add('cyl', M(-0.075, 0.93, 1.185, 0.07, 0.02, 0.09, 0, Math.PI / 2), D).add('cyl', M(0.075, 0.93, 1.185, 0.07, 0.02, 0.09, 0, Math.PI / 2), D);
+  g.add('cone', M(-0.2, 1.3, 0.72, 0.2, 0.26, 0.1, 0, -0.3, 0.35), P).add('cone', M(0.2, 1.3, 0.72, 0.2, 0.26, 0.1, 0, -0.3, -0.35), P);
+  g.add('sph', M(-0.17, 1.07, 1.02, 0.07, 0.08, 0.04), D).add('sph', M(0.17, 1.07, 1.02, 0.07, 0.08, 0.04), D);
+  for (const [x, z] of [[-0.24, 0.42], [0.24, 0.42], [-0.24, -0.42], [0.24, -0.42]]) { g.add('cyl', M(x, 0.24, z, 0.2, 0.5, 0.2), P); g.add('cyl', M(x, 0.03, z, 0.21, 0.06, 0.21), D); }
+  g.add('torus', M(0, 0.98, -0.74, 0.22, 0.22, 0.22, Math.PI / 2), P);
+  if (gold) for (let i = 0; i < g.c.length; i++) g.c[i] = 1;
+  return g.geometry();
+}
+export const creatureMat = () => worldShading(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 }), { key: 'creature' });
+
 function unpackMesh(buf, off, nv, nf, scale) {
   let o = off; const al = n => { const r = o; o += n; o += o & 1; return r; };
   const pos = new Int16Array(buf.buffer, buf.byteOffset + al(nv * 6), nv * 3), nor = new Int8Array(buf.buffer, buf.byteOffset + al(nv * 3), nv * 3);
@@ -13,12 +33,13 @@ function unpackMesh(buf, off, nv, nf, scale) {
   g.setIndex(new THREE.BufferAttribute(new Uint16Array(idx), 1)); g.computeBoundingSphere();
   return g;
 }
-const CZD = await gunzip(window.PORK_CZ.geo), CARD = await gunzip(window.PORK_CAR.geo);
-const CZ_HIP = window.PORK_CZ.meta.hipy;
+const PORK_CZ = await czData, PORK_CAR = await carData;
+const CZD = await gunzip(PORK_CZ.geo), CARD = await gunzip(PORK_CAR.geo);
+const CZ_HIP = PORK_CZ.meta.hipy;
 const CZ_SKINS = [[0.92, 0.37, 0.38], [0.95, 0.50, 0.50], [0.80, 0.30, 0.32], [0.42, 0.22, 0.15], [0.98, 0.62, 0.58], [0.92, 0.37, 0.38], [0.86, 0.42, 0.36]];
 const CZ_CLOTH = [[214, 40, 60], [250, 196, 40], [40, 120, 220], [60, 170, 90], [240, 120, 40], [150, 70, 190], [245, 240, 225], [30, 60, 120], [240, 120, 160], [90, 60, 40], [40, 170, 170], [123, 30, 46]];
 function citizenMaterial(v) {
-  const tex = new THREE.TextureLoader().load(window.PORK_CZ.heads[v]); tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
+  const tex = new THREE.TextureLoader().load(PORK_CZ.heads[v]); tex.colorSpace = THREE.SRGBColorSpace; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter;
   const m = new THREE.MeshStandardMaterial({ roughness: 0.62, envMapIntensity: 0.6 });
   worldShading(m, {
     key: 'citizen', after: sh => {
@@ -53,8 +74,8 @@ function citizenMaterial(v) {
   return m;
 }
 // un lot de citoyens instanciés par silhouette ; set(i, matrice, phase, amplitude)
-function makeCitizenPool(n) {
-  const V = window.PORK_CZ.meta.variants, per = Math.ceil(n / V.length), pool = { n, meshes: [], per };
+export function makeCitizenPool(n) {
+  const V = PORK_CZ.meta.variants, per = Math.ceil(n / V.length), pool = { n, meshes: [], per };
   const lin = c => { const k = new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace); return [k.r, k.g, k.b]; };
   V.forEach((vv, vi) => {
     const g = unpackMesh(CZD, vv.off, vv.nv, vv.nf, 2.0);
@@ -76,8 +97,8 @@ function makeCitizenPool(n) {
   pool.flush = () => { for (const e of pool.meshes) { e.m.instanceMatrix.needsUpdate = true; e.an.needsUpdate = true; } };
   return pool;
 }
-function makeCarAssets() {
-  const PC = window.PORK_CAR, geo = unpackMesh(CARD, PC.lo.off, PC.lo.nv, PC.lo.nf, 4.0), geoHi = unpackMesh(CARD, PC.hi.off, PC.hi.nv, PC.hi.nf, 4.0);
+export function makeCarAssets() {
+  const PC = PORK_CAR, geo = unpackMesh(CARD, PC.lo.off, PC.lo.nv, PC.lo.nf, 4.0), geoHi = unpackMesh(CARD, PC.hi.off, PC.hi.nv, PC.hi.nf, 4.0);
   const mat = new THREE.MeshPhysicalMaterial({ roughness: 0.35, metalness: 0.0, clearcoat: 0.45, clearcoatRoughness: 0.12, envMapIntensity: 0.7 });
   worldShading(mat, {
     key: 'car2', after: sh => {
@@ -107,7 +128,7 @@ function makeCarAssets() {
 }
 
 // habitacle : vu seulement depuis le siège du conducteur
-function makeCarInterior(bodyCol) {
+export function makeCarInterior(bodyCol) {
   const K = new Kit(), grp = new THREE.Group();
   const DASH = [58, 52, 54], TRIM = [224, 208, 176], SEAT = [150, 40, 50], DARK = [26, 24, 26];
   const beam = (mat, a, b, w, h, col) => { const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b), m = new THREE.Matrix4().lookAt(va, vb, new THREE.Vector3(0, 1, 0)); m.setPosition(va.clone().add(vb).multiplyScalar(0.5)); m.scale(new THREE.Vector3(w, h, va.distanceTo(vb))); K.on(mat).add('box', m, col); };
@@ -166,8 +187,8 @@ function makeCarInterior(bodyCol) {
 }
 
 // le porc de marche (porc4.h) : monture et troupeaux
-function makePorc() {
-  const pm = window.PORK_CZ.meta.porc, geo = unpackMesh(CZD, pm.off, pm.nv, pm.nf, 2.0);
+export function makePorc() {
+  const pm = PORK_CZ.meta.porc, geo = unpackMesh(CZD, pm.off, pm.nv, pm.nf, 2.0);
   const U = { uPorc: { value: new THREE.Vector2(0, 0) } };
   const mat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.95, 0.47, 0.52), roughness: 0.42, clearcoat: 0.35, clearcoatRoughness: 0.3, envMapIntensity: 0.7 });
   worldShading(mat, {

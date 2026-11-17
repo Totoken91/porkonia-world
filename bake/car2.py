@@ -95,4 +95,4 @@ if __name__ == '__main__' and sys.argv[1] == 'mesh':
         for arr in (np.round(v2 / 4.0 * 32767).astype('<i2'), np.round(n * 127).astype(np.int8), np.stack([slot, slot * 0, slot * 0], 1).astype(np.uint8), f3.astype('<u2')): blob += arr.tobytes(); blob += b'\0' * ((-len(blob)) % 2)
         print(name, len(v2), len(f3), np.bincount(slot))
     out['geo'] = base64.b64encode(gzip.compress(bytes(blob), 9)).decode()
-    js = 'window.PORK_CAR = ' + json.dumps(out) + ';\n'; open(ROOT + '/data/car.js', 'w').write(js); print(len(js) // 1024, 'KB')
+    js = 'export default ' + json.dumps(out) + ';\n'; open(ROOT + '/data/car.js', 'w').write(js); print(len(js) // 1024, 'KB')

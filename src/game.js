@@ -1,11 +1,11 @@
 // Économie, itinéraires, interface, sons, boucle principale, démarrage
 import * as THREE from 'three';
 import { Q, STATIONS, clamp, $, fmtMoney, NX, NZ, HGT, CLS, LAKE, WW, HH, lerp, canvas, QKEY, applyTime, SUN_DIR, camera, hAt, sky, updateSunShadow, WS, WATERS, gradePass, renderer, renderReflection, composer, bloomPass, reflectRT, TIME_LISTENERS, TKEY, setStatus, buildTextures, hashStr, scene, buildTerrain, buildWater, TIMES, STATION_BY_NAME, waterAt, clsAt, slopeAt, tmGet } from './core.js';
-import { ROADS, PROPS, ANIMATED, groundAt } from './registry.js';
+import { ROADS, PROPS, ANIMATED, groundAt, LAZY } from './registry.js';
 import { game, input, clock } from './state.js';
 import { TRACKS, DEPART, STUBS, STOP_MARK, PLATFORM_HALF, markTrackMask, buildNetwork, buildSleepers, PILLARS, PORTALS } from './tracks.js';
 import { PRODUITS, scenery, LANDMARK_SPOTS, BUILDINGS, DRAPES } from './scenery.js';
-import { updateTownLOD, PART_MESHES } from './towns.js';
+import { updateTownLOD, prewarmTownTiles, PART_MESHES } from './towns.js';
 import { citizens, updateCitizens, updateHerds } from './creatures.js';
 import { updateVegetation, VEG, treeMaterial } from './vegetation.js';
 import { updateBirds, puff, updateSmoke } from './ambiance.js';
@@ -762,8 +762,6 @@ function frame(now) {
   sky.position.copy(_camPos);
   updateCitizens(clock.simT, rdt, _camPos);
   updateHerds(clock.simT, rdt, _camPos);
-  updateVegetation(_camPos);
-  updateTownLOD(_camPos);
   updateSleepers();
   updateBirds(clock.simT);
   if (train.notch > 0 && Math.random() < 0.3 + train.notch * 0.1) {
@@ -771,6 +769,9 @@ function frame(now) {
     puff(p.x, p.y, p.z, (Math.random() - 0.5) * 0.6, 2.2 + train.notch * 0.5, (Math.random() - 0.5) * 0.6, 0.45 + train.notch * 0.08, 2.6);
   }
   updateSmoke(rdt, _camPos);
+  // tuiles à la demande : en dernier avant le rendu, après tout ce qui tire au hasard dans l'image
+  updateVegetation(_camPos);
+  updateTownLOD(_camPos);
   for (const a of ANIMATED) { if (a.kind === 'spin') a.obj.rotation.y += rdt * 0.25; if (a.kind === 'mill') a.obj.rotation.z += rdt * 0.6; }
   // ombres : centrées un peu devant la caméra
   camera.getWorldDirection(_fwd); _fwd.y = 0; _fwd.normalize();
@@ -842,12 +843,14 @@ async function boot(hotData) {
   renderLever();
   resize();
   await step('Premier rendu…');
+  // les tuiles à la demande voisines du départ sont fabriquées ici : leurs matériaux se compilent pendant le chargement
+  _camPos.set(startSt.x, 0, startSt.z); updateVegetation(_camPos); prewarmTownTiles(_camPos);
   renderer.compile(scene, camera);
   $('loading').classList.add('done');
   $('title-sub').textContent = had ? `Reprise du service à ${startSt.name} · ${fmtMoney(game.money)} Pork$ en caisse` : 'Exploration libre · 31 villes · à pied, en voiture';
   console.log('boot', Math.round(performance.now() - T0), 'fin'); console.log('Porkonia Express prêt', JSON.stringify(info));
   window.__pe = { train, game, cam, setCamMode, setNotch, STATIONS, TRACKS, physicsStep, updateTrainPose, openMap, closeMap, setRoute, placeTrainAt, rebuildConsist, closeStation, PILLARS, PORTALS, camera, scene, hAt, LANDMARK_SPOTS, BUILDINGS, renderer, checkStops, loadOffer, stationOffset, nextOptions, upcomingLimit, STOP_MARK, offersFor, applyRouteSwitches, flipTrain, applyTime, Q, VEG, composer, waterAt, THREE, PART_MESHES, DRAPES, scenery, EX, exStart, exTeleport, exToggleCar, groundAt, ROADS, NPC, updateNpcs, STATION_BY_NAME, exUpdate, exCamera };
-  window.__pe.PROPS = PROPS; window.__pe.view = (type, k, dist, h, ang = 0.6) => { const a = PROPS.where[type]; const p = a[Math.min(a.length - 1, k)]; const x = p[0] + Math.sin(ang) * dist, z = p[1] + Math.cos(ang) * dist; EX.mode = 'pied'; exSetView(); exPlacePlayer(x, z, ang); EX.P.y = groundAt(x, z) + h; EX.P.pitch = -Math.atan2(h - 1.5, dist) * 0.9; for (let q = 0; q < 90; q++) updateNpcs(0.05); return type + ' ' + a.length; };
+  window.__pe.PROPS = PROPS; window.__pe.LAZY = LAZY; window.__pe.view = (type, k, dist, h, ang = 0.6) => { const a = PROPS.where[type]; const p = a[Math.min(a.length - 1, k)]; const x = p[0] + Math.sin(ang) * dist, z = p[1] + Math.cos(ang) * dist; EX.mode = 'pied'; exSetView(); exPlacePlayer(x, z, ang); EX.P.y = groundAt(x, z) + h; EX.P.pitch = -Math.atan2(h - 1.5, dist) * 0.9; for (let q = 0; q < 90; q++) updateNpcs(0.05); return type + ' ' + a.length; };
   window.__pe.exToggleView = exToggleView; window.__pe.exTogglePig = exTogglePig; window.__pe.exSetView = exSetView;
   window.__pe.go = (x, z, yaw, pitch = 0, mode = 'pied') => { EX.mode = mode; exSetView(); if (mode === 'auto') { exPlaceCar(x, z, yaw); EX.car.orbit = 0; camera.position.set(x - Math.sin(yaw) * 7, groundAt(x, z) + 3.5, z - Math.cos(yaw) * 7); } else { exPlacePlayer(x, z, yaw); EX.P.pitch = pitch; } EX.P.x = x; EX.P.z = z; };
   window.__pe.render = (n = 1) => new Promise(r => { PAUSE.once = n; PAUSE.cb = r; });

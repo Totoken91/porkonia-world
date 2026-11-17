@@ -1,7 +1,7 @@
 // Végétation : atlas, essences, forêts, bottes de foin
 import * as THREE from 'three';
 import { mulberry, worldShading, noiseAt, TEX, WW, HH, Q, idxAt, CLS, LAKE, hAt, tmGet, slopeAt, clsAt, hashStr, waterAt, freeAfterUpload, H, STATIONS, HTEX, NX, NZ, scene } from './core.js';
-import { PROPS } from './registry.js';
+import { PROPS, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
 import { TRACKS } from './tracks.js';
 import { linCol, Geo, M, TOWN_TREES, Mset, scenery } from './scenery.js';
 
@@ -406,6 +406,7 @@ export function buildVegetation(rnd) {
   // arbres des villes (jardins, places, avenues)
   for (const t of TOWN_TREES) push(t.sp, t.x, hAt(t.x, t.z) - 0.2, t.z, t.s, rnd() * 6.28, t.col);
   const col = new THREE.Color(), mtx = new THREE.Matrix4();
+  lazyRankStart();
   for (const [key, arr] of lists) {
     const [ci, cj, sp] = key.split(':');
     const spec = species[sp];
@@ -417,9 +418,9 @@ export function buildVegetation(rnd) {
       freeAfterUpload(null, [im.instanceMatrix, im.instanceColor]);
       return im;
     };
-    const lod0 = mk(spec.lod0, true), lod1 = mk(spec.lod1, false), lod2 = mk(spec.lod2, false);
-    lod1.visible = false; lod0.visible = false; lod2.visible = false;
-    scenery.add(lod0, lod1, lod2);
+    // un maillage par niveau de détail, fabriqué quand ce niveau s'affiche pour la première fois
+    const lod = (geo, cast) => ({ mesh: null, make: () => mk(geo, cast), parent: scenery, rank: lazyRank() });
+    const lod0 = lod(spec.lod0, true), lod1 = lod(spec.lod1, false), lod2 = lod(spec.lod2, false);
 
     const cx = (+ci + 0.5) * CH - WW / 2, cz = (+cj + 0.5) * CH - HH / 2;
     VEG.chunks.push({ cx, cz, lod0, lod1, lod2, rock: !!spec.rock, small: sp === 'buisson' });
@@ -432,9 +433,10 @@ export function updateVegetation(camPos) {
   for (const c of VEG.chunks) {
     const d = Math.max(0, Math.hypot(c.cx - camPos.x, c.cz - camPos.z) - half);
     const lim = c.small ? Math.min(near, 900) : near;
-    c.lod0.visible = d < lim;
-    c.lod1.visible = !c.lod0.visible && d < (c.rock || c.small ? 1800 : Q.treeMid);
-    c.lod2.visible = !c.lod0.visible && !c.lod1.visible && d < (c.rock || c.small ? 3500 : far);
+    const v0 = d < lim, v1 = !v0 && d < (c.rock || c.small ? 1800 : Q.treeMid), v2 = !v0 && !v1 && d < (c.rock || c.small ? 3500 : far);
+    const gone = d > lazyFar(c.rock || c.small ? 3500 : far);
+    // un niveau masqué mais voisin de celui affiché reste en mémoire : la caméra y revient souvent
+    lazyShow(c.lod0, v0, !v1); lazyShow(c.lod1, v1, !v0 && !v2); lazyShow(c.lod2, v2, gone);
   }
 }
 

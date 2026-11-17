@@ -1,7 +1,7 @@
 // Décor de détail : mobilier urbain, commerces, industrie, campagne
 import * as THREE from 'three';
 import { hAt, worldShading, freeAfterUpload, Q, tmGet, waterAt, noiseAt, clsAt, slopeAt, STATIONS, clamp, WW, HH, hashStr } from './core.js';
-import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt } from './registry.js';
+import { SPOTS, PROPS, PROP_CHUNK, propAdd, PARKED, PROP_COLL, SMOKERS, CARS, groundAt, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
 import { Geo, M, scenery, facadePoint, TOWN_TREES, HEDGES, signMesh, FARMS, freeSpot, reserve } from './scenery.js';
 
       // gros objets infranchissables : {x, z, r}
@@ -14,11 +14,12 @@ function spot(x, z, yaw) { SPOTS.push({ x, z, yaw }); }
 // ---------- modèles (repère : posé sur y = 0, face vers +z ; dernier argument de teinte = zone coloriable)
 export function propDefs() {
   const D = PROPS.defs;
-  const def = (name, R, cast, fn) => { const g = new Geo(); const o = {
+  // la géométrie d'un modèle n'est fabriquée qu'à la première tuile qui l'affiche
+  const def = (name, R, cast, fn) => { let geo = null; D[name] = { R, cast, get geo() { if (!geo) { const g = new Geo(); const o = {
     b: (x, y, z, sx, sy, sz, col, ry = 0, lf = 0) => (g.add('box', M(x, y, z, sx, sy, sz, ry), col, null, lf), o),
     c: (x, y, z, d, h, col, lf = 0, tpl = 'cyl') => (g.add(tpl, M(x, y, z, d, h, d), col, null, lf), o),
     m: (tpl, mat, col, lf = 0) => (g.add(tpl, mat, col, null, lf), o),
-  }; fn(o); D[name] = { geo: g.geometry(), R, cast }; };
+  }; fn(o); geo = g.geometry(); } return geo; } }; };
   const WOOD = [150, 104, 62], WOOD2 = [116, 78, 46], IRON = [44, 48, 46], STONE = [206, 198, 184], WHITE = [246, 242, 232], GREEN = [40, 110, 62], LEAF = [72, 150, 60], STEEL = [196, 202, 210], COPPER = [214, 128, 70], BRICK = [176, 84, 60], CONC = [198, 194, 186], SOIL = [96, 66, 44], GOLD = [232, 190, 80];
   def('banc', 150, false, o => { for (let k = 0; k < 3; k++) o.b(0, 0.46, -0.12 + k * 0.15, 1.7, 0.05, 0.12, WOOD); for (let k = 0; k < 2; k++) o.b(0, 0.72 + k * 0.17, -0.26, 1.7, 0.12, 0.05, WOOD); for (const x of [-0.7, 0.7]) o.b(x, 0.23, 0, 0.07, 0.46, 0.44, IRON).b(x, 0.62, -0.27, 0.07, 0.5, 0.06, IRON); });
   def('poubelle', 110, false, o => o.c(0, 0.45, 0, 0.5, 0.9, GREEN, 0, 'cyl').c(0, 0.93, 0, 0.56, 0.08, [30, 80, 46]).c(0, 0.6, 0, 0.52, 0.06, GOLD));
@@ -93,20 +94,29 @@ function propsMaterial() {
 }
 export function buildProps() {
   const mat = propsMaterial(), col = new THREE.Color(), grp = new THREE.Group();
+  lazyRankStart();
   for (const [, L] of PROPS.map) {
     const d = PROPS.defs[L.type]; if (!d) continue;
-    const im = new THREE.InstancedMesh(d.geo, mat, L.list.length);
-    L.list.forEach((p, i) => { im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[4], p[4], p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
-    im.computeBoundingSphere(); im.castShadow = d.cast; im.receiveShadow = true; im.visible = false;
+    const list = L.list;
+    const make = () => {
+    const im = new THREE.InstancedMesh(d.geo, mat, list.length);
+    list.forEach((p, i) => { im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[4], p[4], p[3])); const t = p[5] || [255, 255, 255]; im.setColorAt(i, col.setRGB(t[0] / 255, t[1] / 255, t[2] / 255, THREE.SRGBColorSpace)); });
+    im.computeBoundingSphere(); im.castShadow = d.cast; im.receiveShadow = true;
     freeAfterUpload(null, [im.instanceMatrix, im.instanceColor]);
-    grp.add(im);
-    PROPS.meshes.push({ mesh: im, cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 });
+    return im;
+    };
+    PROPS.meshes.push({ mesh: null, make, parent: grp, rank: lazyRank(), cx: (Math.floor(L.list[0][0] / PROP_CHUNK) + 0.5) * PROP_CHUNK, cz: (Math.floor(L.list[0][2] / PROP_CHUNK) + 0.5) * PROP_CHUNK, R: d.R * (Q.propK || 1) + PROP_CHUNK * 0.72 });
   }
   PROPS.map.clear();
   scenery.add(grp);
   return PROPS.n;
 }
-export function updateProps(camPos) { for (const p of PROPS.meshes) p.mesh.visible = Math.hypot(p.cx - camPos.x, p.cz - camPos.z) < p.R; }
+export function updateProps(camPos) {
+  for (const p of PROPS.meshes) {
+    const d = Math.hypot(p.cx - camPos.x, p.cz - camPos.z);
+    if (p.make) lazyShow(p, d < p.R, d > lazyFar(p.R)); else p.mesh.visible = d < p.R;
+  }
+}
 
 // ---------- placement : trottoirs
 export function propsSidewalk(o) {
@@ -280,10 +290,15 @@ export function buildParked() {
   const by = new Map();
   for (const p of PARKED) { const k = Math.floor(p.x / 200) + ':' + Math.floor(p.z / 200); let a = by.get(k); if (!a) by.set(k, a = []); a.push(p); }
   const col = new THREE.Color();
+  lazyRankStart();
   for (const [, a] of by) {
+    for (const p of a) PROP_COLL.push({ x: p.x, z: p.z, r: 1.5 });
+    const make = () => {
     const im = new THREE.InstancedMesh(CARS.geo, CARS.mat, a.length);
-    a.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.1, p.z, 1, 1, 1, p.yaw)); const c = cols[(hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)) >>> 2) % cols.length]; im.setColorAt(i, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); PROP_COLL.push({ x: p.x, z: p.z, r: 1.5 }); });
-    im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true; scenery.add(im);
-    PROPS.meshes.push({ mesh: im, cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 });
+    a.forEach((p, i) => { im.setMatrixAt(i, M(p.x, groundAt(p.x, p.z) + 0.1, p.z, 1, 1, 1, p.yaw)); const c = cols[(hashStr('pk' + p.x.toFixed(1) + p.z.toFixed(1)) >>> 2) % cols.length]; im.setColorAt(i, col.setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace)); });
+    im.computeBoundingSphere(); im.castShadow = true; im.receiveShadow = true;
+    return im;
+    };
+    PROPS.meshes.push({ mesh: null, make, parent: scenery, rank: lazyRank(), cx: (Math.floor(a[0].x / 200) + 0.5) * 200, cz: (Math.floor(a[0].z / 200) + 0.5) * 200, R: 170 * (Q.propK || 1) + 145 });
   }
 }

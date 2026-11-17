@@ -23,19 +23,23 @@ async function serveDist() {
   if (!existsSync(join(ROOT, 'dist/index.html'))) { console.error('dist/ absent : lancer `npm run build` d\'abord'); process.exit(1); }
   const srv = createServer(async (req, res) => {
     const p = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^([/\\]|\.\.)+/, '');
-    try { const buf = await readFile(join(ROOT, 'dist', p || 'index.html')); res.writeHead(200, { 'content-type': TYPES[extname(p || '.html')] || 'application/octet-stream' }); res.end(buf); }
+    const file = p || 'index.html';
+    try { const buf = await readFile(join(ROOT, 'dist', file)); res.writeHead(200, { 'content-type': TYPES[extname(file)] || 'application/octet-stream' }); res.end(buf); }
     catch { res.writeHead(404); res.end(); }
   });
   await new Promise(r => srv.listen(0, '127.0.0.1', r));
   return { url: `http://127.0.0.1:${srv.address().port}/`, close: () => srv.close() };
 }
-// horloge figée : chaque image avance de 1/60 s, quel que soit le temps réel ; hasard à graine fixe
+// Mode figé. Horloge : chaque image avance de 1/60 s, quel que soit le temps réel. Hasard : même graine au début de
+// chaque image et de chaque expression, car three.js tire au hasard l'identifiant de tout objet créé ; sans cela, le
+// nombre d'objets fabriqués avant une capture décalerait la position des habitants. Messages éphémères masqués.
 const FIXE = `(() => { let t = 1000, s = 12345;
   performance.now = () => t;
   Math.random = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let r = Math.imul(s ^ s >>> 15, 1 | s); r = r + Math.imul(r ^ r >>> 7, 61 | r) ^ r; return ((r ^ r >>> 14) >>> 0) / 4294967296; };
-  const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = cb => raf(() => { t += 1000 / 60; cb(t); });
+  const raf = window.requestAnimationFrame.bind(window); window.requestAnimationFrame = cb => raf(() => { t += 1000 / 60; s = 12345; cb(t); });
+  window.__shotGraine = () => { s = 12345; };
   window.__shotSaut = () => { t += 1000; };   // avant chaque capture : la première image avance toujours du pas maximal
-  addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '#toasts,#ticker{display:none!important}'; document.head.appendChild(st); }); })();`;
+  addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '#toasts,#ticker,#title,#loading{display:none!important}'; document.head.appendChild(st); }); })();`;
 
 const srv = process.env.SHOT_URL ? null : await serveDist();
 const base = process.env.SHOT_URL || srv.url;
@@ -57,6 +61,7 @@ await pg.evaluate("document.getElementById('title').classList.add('gone'); windo
 await pg.evaluate(readFileSync(join(ROOT, 'tools/aer.js'), 'utf8')); await pg.evaluate(readFileSync(join(ROOT, 'tools/prof.js'), 'utf8'));
 let i = 0;
 for (const part of js.split('||')) {
+  await pg.evaluate('window.__shotGraine && window.__shotGraine()');
   const r = await pg.evaluate(part);
   await pg.evaluate('window.__shotSaut && window.__shotSaut(); window.__pe.render(2)');
   await pg.screenshot({ path: `${out}_${i}.png` }); console.log('shot', i, r, Math.round((Date.now() - t0) / 1000));

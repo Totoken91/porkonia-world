@@ -1,7 +1,7 @@
 // Villes : plan des rues, îlots, bâtiments, façades, toits
 import * as THREE from 'three';
 import { noiseAt, tmGet, waterAt, slopeAt, hAt, tmMark, WW, HH, clsAt, STATIONS, TEX, worldShading, Q, freeAfterUpload, mulberry } from './core.js';
-import { TOWN_SEGS, propAdd } from './registry.js';
+import { TOWN_SEGS, propAdd, lazyShow, lazyFar, lazyRankStart, lazyRank } from './registry.js';
 import { BUILDINGS, newDrape, drapeRect, drapeWall, LAMPS, TOWN_TREES, STREETS, WALLS, ROOFS, FOUNTAINS, TOWERS, HEDGES, CHALET, GWALLS, siteOk, reserve, FARMS, linCol, M, scenery, DRAPE, Kit, groundMaterial, DRAPES, TPL, facadePoint } from './scenery.js';
 import { propsSidewalk, propsShop, propsSquare, propsIndustry, propsPark, propsPlot, yawTo, updateProps } from './props.js';
 
@@ -648,16 +648,50 @@ function makeParts() {
 }
 // --- maillages instanciés par tuile (pour le niveau de détail)
 const PART_CHUNK = 350;
+// Éléments de façade : fenêtres, volets, portes, balcons, corniches, cheminées, lucarnes, lampadaires.
+// Ils se déduisent entièrement des bâtiments (aucun tirage au hasard) : on n'en garde aucune liste.
+// Chaque tuile de 350 m recalcule les siens à la demande, dans le même ordre qu'un calcul global.
 class PartSet {
-  constructor() { this.map = new Map(); }
+  constructor() { this.map = new Map(); this.tx = 0; this.tz = 0; }
+  begin(tx, tz) { this.map.clear(); this.tx = tx; this.tz = tz; }
   add(type, x, y, z, yaw, sx, sy, sz, col, bc) {
-    const ck = type + ':' + Math.floor(x / PART_CHUNK) + ':' + Math.floor(z / PART_CHUNK);
-    let L = this.map.get(ck); if (!L) { L = { type, list: [] }; this.map.set(ck, L); }
-    L.list.push([x, y, z, yaw, sx, sy, sz, col, bc]);
+    if (Math.floor(x / PART_CHUNK) !== this.tx || Math.floor(z / PART_CHUNK) !== this.tz) return;
+    let L = this.map.get(type); if (!L) this.map.set(type, L = []);
+    L.push([x, y, z, yaw, sx, sy, sz, col, bc]);
   }
 }
 const PARTS = new PartSet();
-export const PART_MESHES = [];
+export const PART_MESHES = [];   // une entrée par tuile : { mesh: groupe ou null, make, cx, cz }
+const PART_TILES = new Map();    // "tx:tz" -> { tx, tz, blds: bâtiments dont l'emprise touche la tuile, lamps }
+function partTile(tx, tz) {
+  const k = tx + ':' + tz; let T = PART_TILES.get(k);
+  if (!T) PART_TILES.set(k, T = { tx, tz, blds: [], lamps: [] });
+  return T;
+}
+function makePartTile(T, G, partsMat) {
+  PARTS.begin(T.tx, T.tz);
+  for (const b of T.blds) addFacadeParts(b);
+  for (let t = 0; t < 3; t++) for (const b of T.blds) if (b.roofType === t) addRoofParts(b, t);
+  for (const L of T.lamps) PARTS.add('lamp', L.x, L.y, L.z, L.rot, 1, 1, 1, [255, 255, 255], [L.x, L.y, L.z]);
+  const grp = new THREE.Group(), col = new THREE.Color();
+  for (const [type, list] of PARTS.map) {
+    const im = new THREE.InstancedMesh(G[type], partsMat, list.length);
+    const bc = new Float32Array(list.length * 3);
+    list.forEach((p, i) => {
+      im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[5], p[6], p[3]));
+      const lc = linCol(p[7]); im.setColorAt(i, col.setRGB(lc[0], lc[1], lc[2]));
+      if (p[8]) bc.set(p[8], i * 3); else bc.set([-1e9, 0, 0], i * 3);
+    });
+    im.geometry = im.geometry.clone();
+    im.geometry.setAttribute('aBC', new THREE.InstancedBufferAttribute(bc, 3));
+    im.computeBoundingSphere();
+    im.castShadow = type === 'chim' || type === 'lamp' || type === 'balcWood'; im.receiveShadow = true;
+    freeAfterUpload(null, [im.instanceMatrix, im.instanceColor, im.geometry.attributes.aBC]);
+    grp.add(im);
+  }
+  PARTS.map.clear();
+  return grp;
+}
 const _pm = new THREE.Matrix4();
 export function buildTown3() {
   DET_U.value = Q.detailR || 600;
@@ -676,7 +710,6 @@ export function buildTown3() {
     B1.set([b.style, b.floorY, b.gh, b.fh], i * 4);
     B2.set([flags, STYLE[b.style].shutters ? b.shut : -1, b.seed, b.wallFloors], i * 4);
     if (b.roofType < 3) roofsByType[b.roofType].push(b);
-    addFacadeParts(b);
   });
   walls.geometry.setAttribute('aB1', new THREE.InstancedBufferAttribute(B1, 4));
   walls.geometry.setAttribute('aB2', new THREE.InstancedBufferAttribute(B2, 4));
@@ -699,35 +732,22 @@ export function buildTown3() {
       rm.setColorAt(i, col.setRGB(b.roofCol[0] / 255, b.roofCol[1] / 255, b.roofCol[2] / 255, THREE.SRGBColorSpace));
       const lw = linCol(b.wall); wc.set(lw, i * 3);
       rk[i] = t === 2 ? 1 : b.style === 1 ? 2 : (b.roofCol[2] > b.roofCol[0] ? 1 : 0);
-      addRoofParts(b, t);
     });
     rm.geometry.setAttribute('aWallC', new THREE.InstancedBufferAttribute(wc, 3));
     rm.geometry.setAttribute('aRK', new THREE.InstancedBufferAttribute(rk, 1));
     rm.computeBoundingSphere(); rm.castShadow = true; rm.receiveShadow = true; rm.frustumCulled = false; scenery.add(rm);
     freeAfterUpload(null, [rm.instanceMatrix, rm.instanceColor, rm.geometry.attributes.aWallC, rm.geometry.attributes.aRK]);
   });
-  for (const L of LAMPS) PARTS.add('lamp', L.x, L.y, L.z, L.rot, 1, 1, 1, [255, 255, 255], [L.x, L.y, L.z]);
-  // maillages par tuile
-  for (const [, L] of PARTS.map) {
-    const geo = G[L.type];
-    const im = new THREE.InstancedMesh(geo, partsMat, L.list.length);
-    const bc = new Float32Array(L.list.length * 3);
-    let cx = 0, cz = 0;
-    L.list.forEach((p, i) => {
-      im.setMatrixAt(i, M(p[0], p[1], p[2], p[4], p[5], p[6], p[3]));
-      const lc = linCol(p[7]); im.setColorAt(i, col.setRGB(lc[0], lc[1], lc[2]));
-      if (p[8]) bc.set(p[8], i * 3); else bc.set([-1e9, 0, 0], i * 3);
-      cx += p[0]; cz += p[2];
-    });
-    im.geometry = im.geometry.clone();
-    im.geometry.setAttribute('aBC', new THREE.InstancedBufferAttribute(bc, 3));
-    im.computeBoundingSphere();
-    im.castShadow = L.type === 'chim' || L.type === 'lamp' || L.type === 'balcWood'; im.receiveShadow = true;
-    freeAfterUpload(null, [im.instanceMatrix, im.instanceColor, im.geometry.attributes.aBC]);
-    scenery.add(im);
-    PART_MESHES.push({ mesh: im, cx: (Math.floor(L.list[0][0] / PART_CHUNK) + 0.5) * PART_CHUNK, cz: (Math.floor(L.list[0][2] / PART_CHUNK) + 0.5) * PART_CHUNK, lod: true });
+  // éléments de façade : chaque bâtiment est inscrit dans les tuiles que son emprise touche (les éléments restent dans l'emprise)
+  for (const b of BUILDINGS) {
+    const r = Math.hypot(b.w, b.d) / 2 + 1;
+    for (let tx = Math.floor((b.x - r) / PART_CHUNK); tx <= Math.floor((b.x + r) / PART_CHUNK); tx++)
+      for (let tz = Math.floor((b.z - r) / PART_CHUNK); tz <= Math.floor((b.z + r) / PART_CHUNK); tz++) partTile(tx, tz).blds.push(b);
   }
-  { const cnt = {}; for (const [, L] of PARTS.map) cnt[L.type] = (cnt[L.type] || 0) + L.list.length; console.log('PV parts', JSON.stringify(cnt), 'drape tris', DRAPE.p.length / 9, 'hedges', HEDGES.length, 'walls', GWALLS.length, 'lamps', LAMPS.length); }
+  for (const L of LAMPS) partTile(Math.floor(L.x / PART_CHUNK), Math.floor(L.z / PART_CHUNK)).lamps.push(L);
+  lazyRankStart();
+  for (const T of PART_TILES.values()) PART_MESHES.push({ mesh: null, rank: lazyRank(), make: () => makePartTile(T, G, partsMat), parent: scenery, own: true, cx: (T.tx + 0.5) * PART_CHUNK, cz: (T.tz + 0.5) * PART_CHUNK });
+  console.log('PV tuiles de façade', PART_TILES.size, 'drape tris', DRAPE.p.length / 9, 'hedges', HEDGES.length, 'walls', GWALLS.length, 'lamps', LAMPS.length);
   // haies et murets
   const hedgeMat = hedgeMaterial();
   for (const [list, mat, cast] of [[HEDGES, hedgeMat, true], [GWALLS, worldShading(new THREE.MeshStandardMaterial({ map: TEX.stone, color: 0xd8d0c0, roughness: 0.9 }), { key: 'gwall' }), true]]) {
@@ -747,11 +767,15 @@ export function buildTown3() {
   // sol des villes (un maillage par ville, masqué au loin)
   const gmat = groundMaterial();
   for (const D of DRAPES) { if (!D.d.p.length) { D.d = null; continue; } const gg = D.d.geometry(); D.d = null; freeAfterUpload(gg); const gm = new THREE.Mesh(gg, gmat); gm.receiveShadow = true; scenery.add(gm); D.mesh = gm; }
-  PARTS.map.clear();
 }
-export function updateTownLOD(camPos) {
+function updateParts(camPos) {
   const R = DET_U.value + PART_CHUNK * 0.75;
-  for (const p of PART_MESHES) p.mesh.visible = Math.hypot(p.cx - camPos.x, p.cz - camPos.z) < R;
+  for (const p of PART_MESHES) { const d = Math.hypot(p.cx - camPos.x, p.cz - camPos.z); lazyShow(p, d < R, d > lazyFar(R)); }
+}
+// fabrique les tuiles à la demande voisines d'un point, sans toucher à la visibilité du reste du décor
+export function prewarmTownTiles(camPos) { updateParts(camPos); updateProps(camPos); }
+export function updateTownLOD(camPos) {
+  updateParts(camPos);
   for (const D of DRAPES) if (D.mesh) D.mesh.visible = Math.hypot(D.x - camPos.x, D.z - camPos.z) < 4200;
   updateProps(camPos);
 }

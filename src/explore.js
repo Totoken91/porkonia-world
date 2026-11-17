@@ -41,7 +41,7 @@ export function exInit() {
   const mat = CARS.mat.clone(); mat.color = new THREE.Color().setRGB(123 / 255, 30 / 255, 46 / 255, THREE.SRGBColorSpace);
   mat.onBeforeCompile = CARS.mat.onBeforeCompile; mat.customProgramCacheKey = CARS.mat.customProgramCacheKey;
   const body = new THREE.Mesh(CARS.geoHi, mat); body.castShadow = true; body.receiveShadow = true;
-  const m = new THREE.Group(); m.add(body); EX.car.cabin = makeCarInterior([123, 30, 46]); EX.car.cabin.visible = false; m.add(EX.car.cabin); scene.add(m); EX.car.mesh = m;
+  const m = new THREE.Group(); m.add(body); EX.car.cabin = null; scene.add(m); EX.car.mesh = m;   // habitacle : fabriqué à la première vue intérieure
   { const pa = makePorc(); const pm = new THREE.Mesh(pa.geo, pa.mat); pm.castShadow = true; pm.receiveShadow = true; pm.scale.setScalar(0.82); scene.add(pm); EX.pig.mesh = pm; EX.pig.U = pa.U; }
   const st = STATION_BY_NAME['Douzi City'] || STATIONS[0];
   exTeleport(st);
@@ -161,7 +161,9 @@ export function exCamera(dt) {
 const _eq = new THREE.Quaternion(), _ee = new THREE.Euler();
 export function exSetView() {
   const cockpit = EX.mode === 'auto' && EX.view === 'cockpit';
-  EX.car.cabin.visible = cockpit; camera.near = cockpit ? 0.06 : 0.2; camera.fov = cockpit ? 74 : 68; camera.updateProjectionMatrix();
+  if (cockpit && !EX.car.cabin) { EX.car.cabin = makeCarInterior([123, 30, 46]); EX.car.mesh.add(EX.car.cabin); }
+  if (EX.car.cabin) EX.car.cabin.visible = cockpit;
+  camera.near = cockpit ? 0.06 : 0.2; camera.fov = cockpit ? 74 : 68; camera.updateProjectionMatrix();
   const b = $('ex-view'); if (b) { b.style.display = EX.mode !== 'pied' ? '' : 'none'; b.textContent = EX.view === 'cockpit' ? 'Vue extérieure' : EX.mode === 'porc' ? 'Vue cavalier' : 'Vue habitacle'; }
 }
 export function exToggleView() { EX.view = EX.view === 'cockpit' ? 'ext' : 'cockpit'; EX.car.lookY = EX.car.lookP = 0; exSetView(); }

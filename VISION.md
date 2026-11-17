@@ -14,9 +14,9 @@
 - Sur les arbres : « très bizarres », à retravailler.
 - Dernier avis sur l'ensemble (v8) : « c encore très moche ».
 
-## Les huit photos de référence (pas dans le dépôt)
+## Les huit photos de référence (dans `refs/`)
 
-Kenny a fourni huit photos de villes et l'atlas du pays. Elles ne sont pas ici : les lui demander. Ce qu'elles montrent :
+Kenny a fourni huit photos de villes et l'atlas du pays (`refs/atlas.png`, `refs/photo-1…8`). Les regarder avant de modéliser. Ce qu'elles montrent :
 
 1. Bourg agricole vu d'une route en lacet : toits de tuiles orange, potagers, silos et petite usine au milieu des maisons.
 2. Vieux village de pierre au bord d'un lac : toits d'ardoise serrés, linge aux fenêtres, cheminées qui fument.
@@ -33,6 +33,5 @@ Point commun à retenir : pierre et tuiles, relief, et l'industrie alimentaire (
 
 ## Ce qui manque encore pour exécuter la vision
 
-- Les huit photos et l'atlas (à déposer dans `refs/`).
-- L'export de Porkopédia (à déposer dans `porkopedia/`). Les spécialités et populations des 31 villes sont déjà dans `src/c_scenery.js` (`CITY`).
+- L'export complet de Porkopédia. `porkopedia/extrait.json` ne contient que 9 articles et le catalogue des titres, sans les sections consacrées à des personnes. Les spécialités et populations des 31 villes sont déjà dans `src/c_scenery.js` (`CITY`).
 - Le moteur des personnages (`citizen.h`, `porc4.h`) : dépôt Totoken91/Porkonia-Movie-Studio, dossier `moteur-3d/`.

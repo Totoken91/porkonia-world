@@ -2,6 +2,8 @@
 
 Répondre à Kenny en français, court (il lit sur téléphone). Envoyer les fichiers directement, jamais de zip.
 
+Lire `VISION.md` avant toute passe visuelle : la vision de Kenny dans ses mots, la description de ses photos de référence et ce qui manque encore.
+
 ## Direction artistique (validée par Kenny)
 - Cartoon coloré « Porkonia 3D années 90 », pas de photoréalisme. Spectaculaire, plein de détails et de vie partout.
 - Tout est calculé en code : aucune image IA, aucun modèle importé.
